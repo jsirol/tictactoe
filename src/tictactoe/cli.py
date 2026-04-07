@@ -49,15 +49,21 @@ def play_bot_vs_bot(size: int, bot_x: Bot, bot_o: Bot, rng: random.Random) -> Ga
     return state
 
 
-def run_simulation(size: int, games: int, seed: int | None = None) -> dict[str, int]:
+def run_simulation(
+    size: int,
+    games: int,
+    seed: int | None = None,
+    bot_x_name: str = "random",
+    bot_o_name: str = "random",
+) -> dict[str, int]:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
     if games < 1:
         raise ValueError("--games must be >= 1")
 
     rng = random.Random(seed)
-    bot_x = RandomBot()
-    bot_o = RandomBot()
+    bot_x = get_bot(bot_x_name)
+    bot_o = get_bot(bot_o_name)
     result = {"X": 0, "O": 0, "draw": 0}
     for _ in range(games):
         state = play_bot_vs_bot(size=size, bot_x=bot_x, bot_o=bot_o, rng=rng)
@@ -124,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     simulate.add_argument("--size", type=int, default=15)
     simulate.add_argument("--games", type=int, default=1)
     simulate.add_argument("--seed", type=int, default=None)
+    simulate.add_argument("--bot-x", type=str, default="random", choices=["random", "mcts"])
+    simulate.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts"])
 
     web = subparsers.add_parser("web", help="Run browser-based UI")
     web.add_argument("--host", type=str, default="127.0.0.1")
@@ -143,7 +151,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "play":
             return run_play(size=args.size, seed=args.seed, bot_name=args.bot)
         if args.command == "simulate":
-            result = run_simulation(size=args.size, games=args.games, seed=args.seed)
+            result = run_simulation(
+                size=args.size,
+                games=args.games,
+                seed=args.seed,
+                bot_x_name=args.bot_x,
+                bot_o_name=args.bot_o,
+            )
             print(f"X wins: {result['X']}, O wins: {result['O']}, draws: {result['draw']}")
             return 0
         if args.command == "web":

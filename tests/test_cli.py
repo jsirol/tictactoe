@@ -23,9 +23,29 @@ def test_run_simulation_returns_totals_for_all_games():
     assert result["X"] + result["O"] + result["draw"] == 5
 
 
+def test_run_simulation_supports_different_bots():
+    result = run_simulation(size=10, games=3, seed=7, bot_x_name="mcts", bot_o_name="random")
+    assert result["X"] + result["O"] + result["draw"] == 3
+
+
 def test_main_simulate_subcommand_runs():
     code = main(["simulate", "--size", "10", "--games", "2", "--seed", "1"])
     assert code == 0
+
+
+def test_main_simulate_subcommand_passes_bot_selection(monkeypatch):
+    called = {}
+
+    def fake_run(*, size, games, seed, bot_x_name, bot_o_name):
+        called["args"] = (size, games, seed, bot_x_name, bot_o_name)
+        return {"X": 1, "O": 0, "draw": 0}
+
+    monkeypatch.setattr("tictactoe.cli.run_simulation", fake_run)
+    code = main(
+        ["simulate", "--size", "10", "--games", "1", "--seed", "4", "--bot-x", "mcts", "--bot-o", "random"]
+    )
+    assert code == 0
+    assert called["args"] == (10, 1, 4, "mcts", "random")
 
 
 def test_main_rejects_invalid_size():

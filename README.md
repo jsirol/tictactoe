@@ -71,6 +71,17 @@ uv run tictactoe simulate --size 15 --games 100 --seed 42
 
 Outputs total `X` wins, `O` wins, and draws.
 
+Optional flags:
+
+- `--bot-x <random|mcts>` bot playing as X (default: `random`)
+- `--bot-o <random|mcts>` bot playing as O (default: `random`)
+
+Example with different bots:
+
+```bash
+uv run tictactoe simulate --size 15 --games 50 --seed 42 --bot-x mcts --bot-o random
+```
+
 ### Run browser UI
 
 ```bash

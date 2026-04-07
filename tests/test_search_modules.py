@@ -4,7 +4,12 @@ from tictactoe.core import GameState, Move, Symbol
 from tictactoe.search.cache import BoundedCache
 from tictactoe.search.context import SearchContext
 from tictactoe.search.move_policy import candidate_moves
-from tictactoe.search.tactics import find_immediate_winning_move
+from tictactoe.search.tactics import (
+    ThreatKind,
+    detect_threats,
+    find_forcing_threat_move,
+    find_immediate_winning_move,
+)
 from tictactoe.search.value_model import HeuristicValueModel
 
 
@@ -29,6 +34,54 @@ def test_find_immediate_winning_move_detects_win():
         state.board.place(Symbol.O, Move(3, col))
     move = find_immediate_winning_move(state, Symbol.O, context=SearchContext())
     assert move == Move(3, 4)
+
+
+def test_find_forcing_threat_move_detects_diagonal_four_creation():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.X
+    state.board.place(Symbol.X, Move(1, 1))
+    state.board.place(Symbol.X, Move(2, 2))
+    state.board.place(Symbol.X, Move(3, 3))
+    move = find_forcing_threat_move(state, Symbol.X, min_streak=4, context=SearchContext())
+    assert move == Move(4, 4)
+
+
+def test_find_forcing_threat_move_ignores_half_blocked_four():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.X
+    state.board.place(Symbol.X, Move(1, 1))
+    state.board.place(Symbol.X, Move(2, 2))
+    state.board.place(Symbol.X, Move(3, 3))
+    state.board.place(Symbol.O, Move(0, 0))
+    move = find_forcing_threat_move(state, Symbol.X, min_streak=4, context=SearchContext())
+    assert move is None
+
+
+def test_detect_threats_includes_double_three():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.X
+    state.board.place(Symbol.X, Move(5, 4))
+    state.board.place(Symbol.X, Move(5, 6))
+    state.board.place(Symbol.X, Move(4, 5))
+    state.board.place(Symbol.X, Move(6, 5))
+
+    threats = detect_threats(state, Symbol.X, context=SearchContext())
+    double_threes = [threat for threat in threats if threat.kind is ThreatKind.DOUBLE_THREE]
+    assert double_threes
+    assert double_threes[0].move == Move(5, 5)
+
+
+def test_detect_threats_excludes_half_blocked_double_three():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.X
+    state.board.place(Symbol.X, Move(5, 4))
+    state.board.place(Symbol.X, Move(5, 6))
+    state.board.place(Symbol.X, Move(4, 5))
+    state.board.place(Symbol.X, Move(6, 5))
+    state.board.place(Symbol.O, Move(5, 7))
+
+    threats = detect_threats(state, Symbol.X, context=SearchContext())
+    assert not any(threat.kind is ThreatKind.DOUBLE_THREE and threat.move == Move(5, 5) for threat in threats)
 
 
 def test_heuristic_value_model_scores_threat_higher():

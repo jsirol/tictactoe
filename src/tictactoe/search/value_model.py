@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from tictactoe.core import GameState, Move, Symbol
-from tictactoe.search.tactics import clone_state
+from tictactoe.search.tactics import ThreatKind, clone_state, detect_threats
 
 
 class ValueModel(Protocol):
@@ -25,6 +25,11 @@ class HeuristicValueModel:
     line_weight: float = 0.35
     center_weight: float = 0.05
     stone_weight: float = 0.03
+    open_four_bonus: float = 0.55
+    double_three_bonus: float = 0.25
+    open_three_bonus: float = 0.08
+    allow_opp_open_four_penalty: float = 0.45
+    allow_opp_immediate_penalty: float = 0.9
 
     def evaluate(self, state: GameState, for_symbol: Symbol) -> float:
         if state.winner is for_symbol:
@@ -42,7 +47,24 @@ class HeuristicValueModel:
     def score_move(self, state: GameState, symbol: Symbol, move: Move) -> float:
         trial = clone_state(state)
         trial.apply_move_for(symbol, move)
-        return self.evaluate(trial, symbol)
+        score = self.evaluate(trial, symbol)
+
+        for threat in detect_threats(state, symbol, candidates=[move]):
+            if threat.kind is ThreatKind.IMMEDIATE_WIN:
+                return 1.0
+            if threat.kind is ThreatKind.OPEN_FOUR:
+                score += self.open_four_bonus
+            elif threat.kind is ThreatKind.DOUBLE_THREE:
+                score += self.double_three_bonus
+            elif threat.kind is ThreatKind.OPEN_THREE:
+                score += self.open_three_bonus
+
+        opponent_threats = detect_threats(trial, symbol.other())
+        if any(threat.kind is ThreatKind.IMMEDIATE_WIN for threat in opponent_threats):
+            score -= self.allow_opp_immediate_penalty
+        elif any(threat.kind is ThreatKind.OPEN_FOUR for threat in opponent_threats):
+            score -= self.allow_opp_open_four_penalty
+        return max(-1.0, min(1.0, score))
 
     def score_moves(
         self, state: GameState, symbol: Symbol, moves: list[Move]

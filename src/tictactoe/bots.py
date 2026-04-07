@@ -9,7 +9,7 @@ from typing import Protocol
 from .core import GameState, Move, Symbol
 from .search.cache import BoundedCache
 from .search.context import SearchContext
-from .search.tactics import clone_state, find_immediate_winning_move
+from .search.tactics import Threat, ThreatKind, clone_state, detect_threats
 from .search.value_model import HeuristicValueModel, ValueModel
 
 
@@ -81,13 +81,9 @@ class MCTSBot:
             max_size=self.cache_size
         )
 
-        win_now = find_immediate_winning_move(state, symbol, context=context)
-        if win_now is not None:
-            return win_now
-
-        block_now = find_immediate_winning_move(state, symbol.other(), context=context)
-        if block_now is not None:
-            return block_now
+        tactical = self._pick_tactical_move(state, symbol, context=context)
+        if tactical is not None:
+            return tactical
 
         root = _Node.from_state(
             clone_state(state), context=context, candidate_radius=self.candidate_radius
@@ -149,15 +145,9 @@ class MCTSBot:
         depth = 0
         while not rollout_state.is_over and depth < self.rollout_depth:
             to_move = rollout_state.next_symbol
-            win_now = find_immediate_winning_move(rollout_state, to_move, context=context)
-            if win_now is not None:
-                rollout_state.apply_move(win_now)
-                depth += 1
-                continue
-
-            block_now = find_immediate_winning_move(rollout_state, to_move.other(), context=context)
-            if block_now is not None:
-                rollout_state.apply_move(block_now)
+            tactical = self._pick_tactical_move(rollout_state, to_move, context=context)
+            if tactical is not None:
+                rollout_state.apply_move(tactical)
                 depth += 1
                 continue
 
@@ -182,6 +172,22 @@ class MCTSBot:
         value_cache.set(cache_key, value)
         return value
 
+    def _pick_tactical_move(self, state: GameState, symbol: Symbol, context: SearchContext) -> Move | None:
+        own = detect_threats(state, symbol, context=context)
+        opp = detect_threats(state, symbol.other(), context=context)
+        for kind in (
+            ThreatKind.IMMEDIATE_WIN,
+            ThreatKind.OPEN_FOUR,
+            ThreatKind.DOUBLE_THREE,
+        ):
+            own_move = _first_threat_move(own, kind)
+            if own_move is not None:
+                return own_move
+            opp_move = _first_threat_move(opp, kind)
+            if opp_move is not None:
+                return opp_move
+        return None
+
     def _select_child(self, node: _Node, rng: random.Random) -> _Node:
         if not node.children:
             raise ValueError("Cannot select child from empty node")
@@ -204,3 +210,10 @@ def _score_terminal_result(winner: Symbol | None, root_symbol: Symbol) -> float:
     if winner is None:
         return 0.0
     return 1.0 if winner is root_symbol else -1.0
+
+
+def _first_threat_move(threats: list[Threat], kind: ThreatKind) -> Move | None:
+    for threat in threats:
+        if threat.kind is kind:
+            return threat.move
+    return None

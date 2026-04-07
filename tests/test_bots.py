@@ -44,7 +44,7 @@ def test_mcts_bot_returns_legal_move():
 def test_mcts_bot_is_deterministic_with_same_seed():
     state = GameState.new(size=10)
     state.apply_move(Move(0, 0))
-    bot = MCTSBot(simulations=50)
+    bot = MCTSBot(simulations=50, time_budget_ms=10_000)
     rng_a = random.Random(123)
     rng_b = random.Random(123)
     assert bot.choose_move(state, Symbol.O, rng_a) == bot.choose_move(state, Symbol.O, rng_b)
@@ -59,3 +59,56 @@ def test_mcts_bot_prefers_immediate_winning_move():
     state.next_symbol = Symbol.O
     bot = MCTSBot(simulations=10)
     assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(5)) == Move(2, 4)
+
+
+def test_mcts_bot_blocks_diagonal_forcing_four_when_no_immediate_win():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.O
+    state.board.place(Symbol.X, Move(1, 1))
+    state.board.place(Symbol.X, Move(2, 2))
+    state.board.place(Symbol.X, Move(3, 3))
+    state.board.place(Symbol.O, Move(0, 9))
+    state.board.place(Symbol.O, Move(9, 0))
+
+    bot = MCTSBot(simulations=20)
+    assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(7)) == Move(4, 4)
+
+
+def test_mcts_bot_plays_own_double_three_before_search():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.O
+    state.board.place(Symbol.O, Move(5, 4))
+    state.board.place(Symbol.O, Move(5, 6))
+    state.board.place(Symbol.O, Move(4, 5))
+    state.board.place(Symbol.O, Move(6, 5))
+
+    bot = MCTSBot(simulations=20)
+    assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(11)) == Move(5, 5)
+
+
+def test_mcts_bot_blocks_opponent_double_three_when_no_higher_threat():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.O
+    state.board.place(Symbol.X, Move(5, 4))
+    state.board.place(Symbol.X, Move(5, 6))
+    state.board.place(Symbol.X, Move(4, 5))
+    state.board.place(Symbol.X, Move(6, 5))
+    state.board.place(Symbol.O, Move(0, 0))
+
+    bot = MCTSBot(simulations=20)
+    assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(12)) == Move(5, 5)
+
+
+def test_mcts_prioritizes_open_four_over_blocking_opponent_double_three():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.O
+    state.board.place(Symbol.O, Move(2, 1))
+    state.board.place(Symbol.O, Move(2, 2))
+    state.board.place(Symbol.O, Move(2, 3))
+    state.board.place(Symbol.X, Move(5, 4))
+    state.board.place(Symbol.X, Move(5, 6))
+    state.board.place(Symbol.X, Move(4, 5))
+    state.board.place(Symbol.X, Move(6, 5))
+
+    bot = MCTSBot(simulations=20)
+    assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(13)) == Move(2, 4)

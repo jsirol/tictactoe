@@ -4,8 +4,7 @@ from tictactoe.core import GameState, Move
 
 
 def candidate_moves(state: GameState, radius: int = 1, occupied: list[Move] | None = None) -> list[Move]:
-    legal = state.board.legal_moves()
-    if not legal:
+    if state.board.occupied_count == state.board.size * state.board.size:
         return []
 
     if occupied is None:
@@ -24,7 +23,7 @@ def candidate_moves(state: GameState, radius: int = 1, occupied: list[Move] | No
                     frontier.add(move)
 
     if not frontier:
-        return legal
+        return state.board.legal_moves()
 
     center = (state.board.size - 1) / 2.0
     return sorted(frontier, key=lambda m: (abs(m.row - center) + abs(m.col - center), m.row, m.col))

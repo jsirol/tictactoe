@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from tictactoe.core import GameState, Move, Symbol
-from tictactoe.search.tactics import ThreatKind, clone_state, detect_threats
+from tictactoe.search.tactics import ThreatKind, detect_threats
 
 
 class ValueModel(Protocol):
@@ -79,12 +79,18 @@ class HeuristicValueModel:
         return max(-1.0, min(1.0, raw))
 
     def score_move(self, state: GameState, symbol: Symbol, move: Move) -> float:
-        trial = clone_state(state)
-        trial.apply_move_for(symbol, move)
-        score = self.evaluate(trial, symbol)
+        if state.board.cells[move.row][move.col] is not None:
+            return -1.0
+        move_threats = detect_threats(state, symbol, candidates=[move])
+        previous_next = state.next_symbol
+        state.next_symbol = symbol
+        token = state.make_move(move)
+        score = self.evaluate(state, symbol)
 
-        for threat in detect_threats(state, symbol, candidates=[move]):
+        for threat in move_threats:
             if threat.kind is ThreatKind.IMMEDIATE_WIN:
+                state.unmake_move(token)
+                state.next_symbol = previous_next
                 return 1.0
             if threat.kind is ThreatKind.OPEN_FOUR:
                 score += self.weights.open_four_bonus
@@ -93,11 +99,13 @@ class HeuristicValueModel:
             elif threat.kind is ThreatKind.OPEN_THREE:
                 score += self.weights.open_three_bonus
 
-        opponent_threats = detect_threats(trial, symbol.other())
+        opponent_threats = detect_threats(state, symbol.other())
         if any(threat.kind is ThreatKind.IMMEDIATE_WIN for threat in opponent_threats):
             score -= self.weights.allow_opp_immediate_penalty
         elif any(threat.kind is ThreatKind.OPEN_FOUR for threat in opponent_threats):
             score -= self.weights.allow_opp_open_four_penalty
+        state.unmake_move(token)
+        state.next_symbol = previous_next
         return max(-1.0, min(1.0, score))
 
     def score_moves(

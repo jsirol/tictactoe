@@ -14,16 +14,18 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
 - Modes:
   - `play`: terminal UI (human vs bot)
   - `simulate`: headless bot vs bot simulation
+  - `selfplay`: multi-process self-play data generation
   - `web`: browser UI (human vs bot, default: MCTS)
 - Bot architecture:
   - Shared bot protocol/interface
   - Implemented bots: `RandomBot`, `MCTSBot`, and `AlphaBetaBot` (seedable RNG support)
-  - Reusable search modules for stronger bots:
+- Reusable search modules for stronger bots:
     - frontier move policy
     - pluggable move generation modes (`full_legal`, `frontier`, `threat_frontier`)
     - tactical immediate win/block checks
     - forcing-line threat solver utility
     - heuristic value model (reusable across bots)
+    - policy/value model abstraction for MCTS (heuristic or torch-backed)
 - Browser UI:
   - Clickable grid board in the web page
   - `New Game` button to reset/start a match
@@ -128,6 +130,16 @@ Example with different bots:
 ```bash
 uv run tictactoe simulate --size 15 --games 50 --seed 42 --bot-x alphabeta --bot-o mcts
 ```
+
+### Run multi-process self-play generation
+
+```bash
+uv run tictactoe selfplay --size 10 --games 40 --workers 12 --batch-size 32 --output-dir data/selfplay --seed 1
+```
+
+Optional:
+- `--model-path <PATH>` load a torchscript policy/value model (falls back to heuristic when unavailable)
+- `--determinism <balanced|strict|fast>` reproducibility/throughput mode
 
 ### Run browser UI
 

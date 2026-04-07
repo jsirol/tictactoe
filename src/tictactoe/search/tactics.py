@@ -53,24 +53,32 @@ def detect_threats(
 
     found: list[Threat] = []
     for move in candidates:
-        trial = clone_state(state)
-        trial.apply_move_for(symbol, move)
+        if state.board.cells[move.row][move.col] is not None:
+            continue
+        previous_next = state.next_symbol
+        state.next_symbol = symbol
+        token = state.make_move(move)
 
-        if trial.winner is symbol:
+        if state.winner is symbol:
             found.append(_mk_threat(ThreatKind.IMMEDIATE_WIN, move, forcing=True, guaranteed=True))
+            state.unmake_move(token)
+            state.next_symbol = previous_next
             continue
 
-        patterns = [_line_pattern(trial, symbol, move, dr, dc) for dr, dc in ((1, 0), (0, 1), (1, 1), (1, -1))]
+        patterns = [_line_pattern(state, symbol, move, dr, dc) for dr, dc in ((1, 0), (0, 1), (1, 1), (1, -1))]
         if any(_is_open_four(pattern) for pattern in patterns):
             found.append(_mk_threat(ThreatKind.OPEN_FOUR, move, forcing=True, guaranteed=False))
+            state.unmake_move(token)
+            state.next_symbol = previous_next
             continue
 
         open_three_count = sum(1 for pattern in patterns if _is_open_three(pattern))
         if open_three_count >= 2:
             found.append(_mk_threat(ThreatKind.DOUBLE_THREE, move, forcing=True, guaranteed=False))
-            continue
-        if open_three_count == 1:
+        elif open_three_count == 1:
             found.append(_mk_threat(ThreatKind.OPEN_THREE, move, forcing=False, guaranteed=False))
+        state.unmake_move(token)
+        state.next_symbol = previous_next
 
     return sorted(found, key=lambda t: (-t.severity, t.move.row, t.move.col))
 
@@ -109,9 +117,14 @@ def find_forcing_threat_move(
     best_move: Move | None = None
     best_streak = 0
     for move in candidates:
-        trial = clone_state(state)
-        trial.apply_move_for(symbol, move)
-        streak = _max_line_from_move(trial, symbol, move)
+        if state.board.cells[move.row][move.col] is not None:
+            continue
+        previous_next = state.next_symbol
+        state.next_symbol = symbol
+        token = state.make_move(move)
+        streak = _max_line_from_move(state, symbol, move)
+        state.unmake_move(token)
+        state.next_symbol = previous_next
         if streak >= min_streak and streak > best_streak:
             best_streak = streak
             best_move = move

@@ -8,10 +8,8 @@ from tictactoe.search.move_policy import candidate_moves
 
 @dataclass
 class SearchContext:
-    occupied_cache: dict[tuple[tuple[str, ...], ...], list[Move]] = field(default_factory=dict)
-    candidate_cache: dict[tuple[tuple[tuple[str, ...], ...], int], list[Move]] = field(
-        default_factory=dict
-    )
+    occupied_cache: dict[int, list[Move]] = field(default_factory=dict)
+    candidate_cache: dict[tuple[int, int], list[Move]] = field(default_factory=dict)
 
     def occupied_moves(self, state: GameState) -> list[Move]:
         state_key = state.state_key()

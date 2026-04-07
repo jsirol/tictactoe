@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -32,15 +33,37 @@ class UndoToken:
     previous_winner: Symbol | None
 
 
+_ZOBRIST_CACHE: dict[int, tuple[tuple[tuple[int, int], ...], ...]] = {}
+_ZOBRIST_TURN_X = 0x9E3779B185EBCA87
+
+
+def _zobrist_table(size: int) -> tuple[tuple[tuple[int, int], ...], ...]:
+    cached = _ZOBRIST_CACHE.get(size)
+    if cached is not None:
+        return cached
+    rng = random.Random(0xC0DE + size * 17)
+    table = tuple(
+        tuple((rng.getrandbits(64), rng.getrandbits(64)) for _ in range(size)) for _ in range(size)
+    )
+    _ZOBRIST_CACHE[size] = table
+    return table
+
+
 @dataclass
 class Board:
     size: int
     cells: list[list[Symbol | None]] = field(init=False)
+    occupied_count: int = field(init=False, default=0)
+    _hash: int = field(init=False, default=0)
+    _zobrist: tuple[tuple[tuple[int, int], ...], ...] = field(init=False)
 
     def __post_init__(self) -> None:
         if self.size < MIN_BOARD_SIZE:
             raise ValueError(f"Board size must be >= {MIN_BOARD_SIZE}")
         self.cells = [[None for _ in range(self.size)] for _ in range(self.size)]
+        self.occupied_count = 0
+        self._hash = 0
+        self._zobrist = _zobrist_table(self.size)
 
     def in_bounds(self, move: Move) -> bool:
         return 0 <= move.row < self.size and 0 <= move.col < self.size
@@ -56,6 +79,19 @@ class Board:
         if self.cells[move.row][move.col] is not None:
             raise InvalidMove(f"Cell already occupied: {move}")
         self.cells[move.row][move.col] = symbol
+        self.occupied_count += 1
+        self._hash ^= self._cell_hash(symbol, move)
+
+    def remove(self, move: Move) -> Symbol:
+        if not self.in_bounds(move):
+            raise InvalidMove(f"Move out of bounds: {move}")
+        symbol = self.cells[move.row][move.col]
+        if symbol is None:
+            raise InvalidMove(f"Cannot remove empty cell: {move}")
+        self.cells[move.row][move.col] = None
+        self.occupied_count -= 1
+        self._hash ^= self._cell_hash(symbol, move)
+        return symbol
 
     def legal_moves(self) -> list[Move]:
         moves: list[Move] = []
@@ -74,13 +110,10 @@ class Board:
         return moves
 
     def is_full(self) -> bool:
-        return all(cell is not None for row in self.cells for cell in row)
+        return self.occupied_count == self.size * self.size
 
-    def board_key(self) -> tuple[tuple[str, ...], ...]:
-        return tuple(
-            tuple(cell.value if cell is not None else "." for cell in row)
-            for row in self.cells
-        )
+    def board_key(self) -> int:
+        return self._hash
 
     def has_winning_streak(self, symbol: Symbol, move: Move) -> bool:
         if not self.in_bounds(move):
@@ -108,6 +141,10 @@ class Board:
             row += dr
             col += dc
         return count
+
+    def _cell_hash(self, symbol: Symbol, move: Move) -> int:
+        x_hash, o_hash = self._zobrist[move.row][move.col]
+        return x_hash if symbol is Symbol.X else o_hash
 
 
 @dataclass
@@ -148,9 +185,7 @@ class GameState:
         move = token.move
         if not self.board.in_bounds(move):
             raise InvalidMove(f"Move out of bounds: {move}")
-        if self.board.cells[move.row][move.col] is None:
-            raise InvalidMove(f"Cannot unmake empty cell: {move}")
-        self.board.cells[move.row][move.col] = None
+        self.board.remove(move)
         self.next_symbol = token.previous_next_symbol
         self.winner = token.previous_winner
 
@@ -166,7 +201,10 @@ class GameState:
         cloned.next_symbol = self.next_symbol
         cloned.winner = self.winner
         cloned.board.cells = [row[:] for row in self.board.cells]
+        cloned.board.occupied_count = self.board.occupied_count
+        cloned.board._hash = self.board._hash
         return cloned
 
-    def state_key(self) -> tuple[tuple[str, ...], ...]:
-        return self.board.board_key()
+    def state_key(self) -> int:
+        turn_hash = _ZOBRIST_TURN_X if self.next_symbol is Symbol.X else 0
+        return self.board.board_key() ^ turn_hash

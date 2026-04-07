@@ -113,3 +113,32 @@ def test_main_web_subcommand_defaults_to_mcts(monkeypatch):
     code = main(["web"])
     assert code == 0
     assert called["args"] == ("127.0.0.1", 8000, 15, None, "mcts", None)
+
+
+def test_main_selfplay_subcommand_runs(monkeypatch):
+    called = {}
+
+    def fake_selfplay(config):
+        called["config"] = config
+        return {"games": 2, "samples": 10, "elapsed_sec": 1.0, "games_per_min": 120.0, "path": "data/out.jsonl"}
+
+    monkeypatch.setattr("tictactoe.cli.run_selfplay", fake_selfplay)
+    code = main(
+        [
+            "selfplay",
+            "--size",
+            "10",
+            "--games",
+            "2",
+            "--workers",
+            "2",
+            "--seed",
+            "1",
+            "--output-dir",
+            "data/tmp-selfplay",
+        ]
+    )
+    assert code == 0
+    assert called["config"].size == 10
+    assert called["config"].games == 2
+    assert called["config"].workers == 2

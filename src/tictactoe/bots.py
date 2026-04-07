@@ -3,13 +3,14 @@ from __future__ import annotations
 import random
 import time
 from dataclasses import dataclass, field
-from math import log, sqrt
+from math import sqrt
 from typing import Protocol
 
 from .core import GameState, Move, Symbol
 from .search.cache import BoundedCache
 from .search.context import SearchContext
 from .search.move_generator import MoveGenerationMode, generate_moves
+from .search.policy_value import HeuristicPolicyValueModel, PolicyValueModel
 from .search.tactics import Threat, ThreatKind, clone_state, detect_threats
 from .search.threat_solver import ThreatSolutionStatus, solve_forcing_line
 from .search.value_model import HeuristicValueModel, ValueModel
@@ -38,8 +39,10 @@ class _Node:
     state: GameState
     parent: "_Node | None"
     move: Move | None
-    untried_moves: list[Move]
-    children: list["_Node"]
+    prior: float
+    unexpanded_moves: list[Move]
+    children: dict[Move, "_Node"]
+    policy_priors: dict[Move, float] = field(default_factory=dict)
     visits: int = 0
     total_value: float = 0.0
 
@@ -56,8 +59,10 @@ class _Node:
             state=state,
             parent=parent,
             move=move,
-            untried_moves=list(context.candidate_moves(state, radius=candidate_radius)),
-            children=[],
+            prior=1.0,
+            unexpanded_moves=list(context.candidate_moves(state, radius=candidate_radius)),
+            children={},
+            policy_priors={},
         )
 
 
@@ -66,12 +71,17 @@ class MCTSBot:
     name: str = "mcts"
     simulations: int = 1200
     time_budget_ms: int = 300
-    rollout_depth: int = 10
     candidate_radius: int = 1
-    epsilon: float = 0.15
+    rollout_depth: int = 0
+    epsilon: float = 0.0
     exploration_constant: float = 1.41421356237
+    temperature: float = 0.0
+    dirichlet_alpha: float = 0.3
+    root_noise_fraction: float = 0.0
     value_model: ValueModel = field(default_factory=HeuristicValueModel)
+    policy_value_model: PolicyValueModel | None = None
     cache_size: int = 4096
+    last_policy: dict[Move, float] = field(default_factory=dict, init=False)
 
     def choose_move(self, state: GameState, symbol: Symbol, rng: random.Random) -> Move:
         legal = state.board.legal_moves()
@@ -79,9 +89,6 @@ class MCTSBot:
             raise ValueError("No legal moves available")
 
         context = SearchContext()
-        value_cache: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], float] = BoundedCache(
-            max_size=self.cache_size
-        )
 
         tactical = self._pick_tactical_move(state, symbol, context=context)
         if tactical is not None:
@@ -92,20 +99,33 @@ class MCTSBot:
         )
         deadline = time.perf_counter() + (self.time_budget_ms / 1000.0)
         iterations = 0
+        pv_model = self.policy_value_model or HeuristicPolicyValueModel(self.value_model)
 
         while iterations < max(1, self.simulations) and time.perf_counter() < deadline:
             node = root
+            path: list[_Node] = [root]
+            leaf_value: float | None = None
 
-            while not node.untried_moves and node.children and not node.state.is_over:
+            while not node.state.is_over and not node.unexpanded_moves and node.children:
                 node = self._select_child(node, rng)
+                path.append(node)
 
-            if node.untried_moves and not node.state.is_over:
-                widen_cap = max(1, int(sqrt(node.visits + 1)))
-                if len(node.children) >= widen_cap:
-                    node = self._select_child(node, rng)
-                else:
-                    move = rng.choice(node.untried_moves)
-                    node.untried_moves.remove(move)
+            if node.state.is_over:
+                leaf_value = _score_terminal_result(node.state.winner, symbol)
+            else:
+                if not node.policy_priors:
+                    candidates = context.candidate_moves(node.state, radius=self.candidate_radius)
+                    priors, value = pv_model.predict(node.state, symbol, candidates)
+                    if node.parent is None and priors and self.root_noise_fraction > 0.0:
+                        priors = self._apply_root_noise(priors, rng)
+                    node.policy_priors = priors
+                    if not node.unexpanded_moves:
+                        node.unexpanded_moves = list(candidates)
+                    leaf_value = value
+
+                if node.unexpanded_moves:
+                    move = rng.choice(node.unexpanded_moves)
+                    node.unexpanded_moves.remove(move)
                     next_state = clone_state(node.state)
                     next_state.apply_move(move)
                     child = _Node.from_state(
@@ -115,64 +135,39 @@ class MCTSBot:
                         parent=node,
                         move=move,
                     )
-                    node.children.append(child)
+                    child.prior = node.policy_priors.get(move, 0.0)
+                    node.children[move] = child
                     node = child
+                    path.append(child)
+                    if node.state.is_over:
+                        leaf_value = _score_terminal_result(node.state.winner, symbol)
+                    else:
+                        _, leaf_value = pv_model.predict(
+                            node.state, symbol, context.candidate_moves(node.state, radius=self.candidate_radius)
+                        )
 
-            value = self._rollout_value(node.state, symbol, rng, context, value_cache)
-            while node is not None:
-                node.visits += 1
-                node.total_value += value
-                node = node.parent
+            for seen in path:
+                seen.visits += 1
+                seen.total_value += leaf_value if leaf_value is not None else 0.0
             iterations += 1
 
         if not root.children:
             return rng.choice(context.candidate_moves(state, radius=self.candidate_radius) or legal)
 
-        best_visits = max(child.visits for child in root.children)
-        candidates = [child for child in root.children if child.visits == best_visits]
-        picked = rng.choice(candidates).move
+        children = list(root.children.values())
+        best_visits = max(child.visits for child in children)
+        total_visits = sum(max(1, child.visits) for child in children)
+        self.last_policy = {
+            child.move: (max(1, child.visits) / total_visits) for child in children if child.move is not None
+        }
+        if self.temperature > 0.0:
+            picked = self._sample_temperature(children, rng)
+        else:
+            candidates = [child for child in children if child.visits == best_visits]
+            picked = rng.choice(candidates).move
         if picked is None:
             return rng.choice(legal)
         return picked
-
-    def _rollout_value(
-        self,
-        state: GameState,
-        root_symbol: Symbol,
-        rng: random.Random,
-        context: SearchContext,
-        value_cache: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], float],
-    ) -> float:
-        rollout_state = clone_state(state)
-        depth = 0
-        while not rollout_state.is_over and depth < self.rollout_depth:
-            to_move = rollout_state.next_symbol
-            tactical = self._pick_tactical_move(rollout_state, to_move, context=context)
-            if tactical is not None:
-                rollout_state.apply_move(tactical)
-                depth += 1
-                continue
-
-            moves = context.candidate_moves(rollout_state, radius=self.candidate_radius)
-            if not moves:
-                break
-            if rng.random() < self.epsilon:
-                chosen = rng.choice(moves)
-            else:
-                scored = self.value_model.score_moves(rollout_state, to_move, moves)
-                chosen = max(scored, key=lambda pair: pair[1])[0]
-            rollout_state.apply_move(chosen)
-            depth += 1
-
-        if rollout_state.is_over:
-            return _score_terminal_result(rollout_state.winner, root_symbol)
-        cache_key = (rollout_state.state_key(), root_symbol.value)
-        cached = value_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        value = self.value_model.evaluate(rollout_state, root_symbol)
-        value_cache.set(cache_key, value)
-        return value
 
     def _pick_tactical_move(self, state: GameState, symbol: Symbol, context: SearchContext) -> Move | None:
         own = detect_threats(state, symbol, context=context)
@@ -195,17 +190,46 @@ class MCTSBot:
             raise ValueError("Cannot select child from empty node")
         scored: list[tuple[float, _Node]] = []
         parent_visits = max(1, node.visits)
-        for child in node.children:
-            if child.visits == 0:
-                score = float("inf")
-            else:
-                exploit = child.total_value / child.visits
-                explore = self.exploration_constant * sqrt(log(parent_visits) / child.visits)
-                score = exploit + explore
+        for child in node.children.values():
+            exploit = 0.0 if child.visits == 0 else child.total_value / child.visits
+            explore = self.exploration_constant * child.prior * sqrt(parent_visits) / (1 + child.visits)
+            score = exploit + explore
             scored.append((score, child))
         best_score = max(score for score, _ in scored)
         candidates = [child for score, child in scored if score == best_score]
         return rng.choice(candidates)
+
+    def _apply_root_noise(self, priors: dict[Move, float], rng: random.Random) -> dict[Move, float]:
+        moves = list(priors.keys())
+        gamma = [rng.gammavariate(self.dirichlet_alpha, 1.0) for _ in moves]
+        total = sum(gamma)
+        if total <= 0.0:
+            return priors
+        mixed: dict[Move, float] = {}
+        for idx, move in enumerate(moves):
+            noise = gamma[idx] / total
+            mixed[move] = (1.0 - self.root_noise_fraction) * priors[move] + self.root_noise_fraction * noise
+        return mixed
+
+    def _sample_temperature(self, children: list[_Node], rng: random.Random) -> Move | None:
+        weights: list[float] = []
+        for child in children:
+            visits = max(1, child.visits)
+            if self.temperature == 1.0:
+                weight = float(visits)
+            else:
+                weight = visits ** (1.0 / self.temperature)
+            weights.append(weight)
+        total = sum(weights)
+        if total <= 0.0:
+            return rng.choice(children).move
+        pick = rng.random() * total
+        seen = 0.0
+        for idx, child in enumerate(children):
+            seen += weights[idx]
+            if seen >= pick:
+                return child.move
+        return children[-1].move
 
 
 @dataclass(frozen=True)
@@ -249,9 +273,7 @@ class AlphaBetaBot:
             return tactical.move
 
         deadline = time.perf_counter() + (self.time_budget_ms / 1000.0)
-        tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry] = BoundedCache(
-            max_size=self.tt_max_size
-        )
+        tt: BoundedCache[int, _TTEntry] = BoundedCache(max_size=self.tt_max_size)
         self._killer_table = {}
         self._history_table = {}
         max_depth = self.max_depth if self.max_depth is not None else 99
@@ -329,7 +351,7 @@ class AlphaBetaBot:
         beta: float,
         root_symbol: Symbol,
         context: SearchContext,
-        tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry],
+        tt: BoundedCache[int, _TTEntry],
         deadline: float,
         rng: random.Random,
         generation: int,
@@ -343,7 +365,7 @@ class AlphaBetaBot:
         if state.is_over:
             return self._terminal_score(state, root_symbol), nodes, tt_hits, cutoffs
 
-        key = (state.state_key(), state.next_symbol.value)
+        key = state.state_key()
         cached = tt.get(key)
         if cached is not None and cached.depth >= depth:
             tt_hits += 1
@@ -472,7 +494,7 @@ class AlphaBetaBot:
         state: GameState,
         symbol: Symbol,
         context: SearchContext,
-        tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry],
+        tt: BoundedCache[int, _TTEntry],
         rng: random.Random,
     ) -> list[Move]:
         own_threats = detect_threats(state, symbol, context=context)
@@ -497,7 +519,7 @@ class AlphaBetaBot:
         scored = dict(self.value_model.score_moves(state, symbol, candidates))
 
         tt_move: Move | None = None
-        tt_entry = tt.get((state.state_key(), state.next_symbol.value))
+        tt_entry = tt.get(state.state_key())
         if tt_entry is not None and tt_entry.best_move in candidates:
             tt_move = tt_entry.best_move
 

@@ -8,6 +8,7 @@ import uvicorn
 
 from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
+from .selfplay import SelfPlayConfig, run_selfplay
 from .search.value_model import HeuristicValueModel
 from .weight_store import load_best_weights_if_exists, load_weights_file
 from .web import create_app
@@ -164,6 +165,24 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--bot", type=str, default="mcts", choices=["random", "mcts", "alphabeta"])
     web.add_argument("--weights-file", type=str, default=None)
 
+    selfplay = subparsers.add_parser("selfplay", help="Run multi-process self-play data generation")
+    selfplay.add_argument("--size", type=int, default=10)
+    selfplay.add_argument("--games", type=int, default=20)
+    selfplay.add_argument("--workers", type=int, default=12)
+    selfplay.add_argument("--seed", type=int, default=None)
+    selfplay.add_argument("--model-path", type=str, default=None)
+    selfplay.add_argument("--output-dir", type=str, default="data/selfplay")
+    selfplay.add_argument("--batch-size", type=int, default=32)
+    selfplay.add_argument("--batch-wait-ms", type=int, default=3)
+    selfplay.add_argument("--simulations", type=int, default=200)
+    selfplay.add_argument("--time-budget-ms", type=int, default=120)
+    selfplay.add_argument("--high-temperature", type=float, default=1.0)
+    selfplay.add_argument("--low-temperature", type=float, default=0.1)
+    selfplay.add_argument("--temperature-cutoff-ply", type=int, default=12)
+    selfplay.add_argument(
+        "--determinism", type=str, default="balanced", choices=["balanced", "strict", "fast"]
+    )
+
     return parser
 
 
@@ -194,6 +213,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bot_name=args.bot,
                 weights_file=args.weights_file,
             )
+        if args.command == "selfplay":
+            summary = run_selfplay(
+                SelfPlayConfig(
+                    size=args.size,
+                    games=args.games,
+                    workers=args.workers,
+                    seed=args.seed,
+                    model_path=args.model_path,
+                    output_dir=args.output_dir,
+                    batch_size=args.batch_size,
+                    batch_wait_ms=args.batch_wait_ms,
+                    simulations=args.simulations,
+                    time_budget_ms=args.time_budget_ms,
+                    determinism=args.determinism,
+                    high_temperature=args.high_temperature,
+                    low_temperature=args.low_temperature,
+                    temperature_cutoff_ply=args.temperature_cutoff_ply,
+                )
+            )
+            print(
+                f"Self-play complete: games={summary['games']}, samples={summary['samples']}, "
+                f"elapsed={summary['elapsed_sec']:.2f}s, games_per_min={summary['games_per_min']:.2f}, "
+                f"path={summary['path']}"
+            )
+            return 0
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2

@@ -7,7 +7,8 @@ from math import log, sqrt
 from typing import Protocol
 
 from .core import GameState, Move, Symbol
-from .search.move_policy import candidate_moves
+from .search.cache import BoundedCache
+from .search.context import SearchContext
 from .search.tactics import clone_state, find_immediate_winning_move
 from .search.value_model import HeuristicValueModel, ValueModel
 
@@ -42,13 +43,18 @@ class _Node:
 
     @classmethod
     def from_state(
-        cls, state: GameState, candidate_radius: int, parent: "_Node | None" = None, move: Move | None = None
+        cls,
+        state: GameState,
+        context: SearchContext,
+        candidate_radius: int,
+        parent: "_Node | None" = None,
+        move: Move | None = None,
     ) -> "_Node":
         return cls(
             state=state,
             parent=parent,
             move=move,
-            untried_moves=candidate_moves(state, radius=candidate_radius),
+            untried_moves=list(context.candidate_moves(state, radius=candidate_radius)),
             children=[],
         )
 
@@ -63,21 +69,29 @@ class MCTSBot:
     epsilon: float = 0.15
     exploration_constant: float = 1.41421356237
     value_model: ValueModel = field(default_factory=HeuristicValueModel)
+    cache_size: int = 4096
 
     def choose_move(self, state: GameState, symbol: Symbol, rng: random.Random) -> Move:
         legal = state.board.legal_moves()
         if not legal:
             raise ValueError("No legal moves available")
 
-        win_now = find_immediate_winning_move(state, symbol)
+        context = SearchContext()
+        value_cache: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], float] = BoundedCache(
+            max_size=self.cache_size
+        )
+
+        win_now = find_immediate_winning_move(state, symbol, context=context)
         if win_now is not None:
             return win_now
 
-        block_now = find_immediate_winning_move(state, symbol.other())
+        block_now = find_immediate_winning_move(state, symbol.other(), context=context)
         if block_now is not None:
             return block_now
 
-        root = _Node.from_state(clone_state(state), candidate_radius=self.candidate_radius)
+        root = _Node.from_state(
+            clone_state(state), context=context, candidate_radius=self.candidate_radius
+        )
         deadline = time.perf_counter() + (self.time_budget_ms / 1000.0)
         iterations = 0
 
@@ -97,12 +111,16 @@ class MCTSBot:
                     next_state = clone_state(node.state)
                     next_state.apply_move(move)
                     child = _Node.from_state(
-                        next_state, candidate_radius=self.candidate_radius, parent=node, move=move
+                        next_state,
+                        context=context,
+                        candidate_radius=self.candidate_radius,
+                        parent=node,
+                        move=move,
                     )
                     node.children.append(child)
                     node = child
 
-            value = self._rollout_value(node.state, symbol, rng)
+            value = self._rollout_value(node.state, symbol, rng, context, value_cache)
             while node is not None:
                 node.visits += 1
                 node.total_value += value
@@ -110,7 +128,7 @@ class MCTSBot:
             iterations += 1
 
         if not root.children:
-            return rng.choice(candidate_moves(state, radius=self.candidate_radius) or legal)
+            return rng.choice(context.candidate_moves(state, radius=self.candidate_radius) or legal)
 
         best_visits = max(child.visits for child in root.children)
         candidates = [child for child in root.children if child.visits == best_visits]
@@ -119,36 +137,50 @@ class MCTSBot:
             return rng.choice(legal)
         return picked
 
-    def _rollout_value(self, state: GameState, root_symbol: Symbol, rng: random.Random) -> float:
+    def _rollout_value(
+        self,
+        state: GameState,
+        root_symbol: Symbol,
+        rng: random.Random,
+        context: SearchContext,
+        value_cache: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], float],
+    ) -> float:
         rollout_state = clone_state(state)
         depth = 0
         while not rollout_state.is_over and depth < self.rollout_depth:
             to_move = rollout_state.next_symbol
-            win_now = find_immediate_winning_move(rollout_state, to_move)
+            win_now = find_immediate_winning_move(rollout_state, to_move, context=context)
             if win_now is not None:
                 rollout_state.apply_move(win_now)
                 depth += 1
                 continue
 
-            block_now = find_immediate_winning_move(rollout_state, to_move.other())
+            block_now = find_immediate_winning_move(rollout_state, to_move.other(), context=context)
             if block_now is not None:
                 rollout_state.apply_move(block_now)
                 depth += 1
                 continue
 
-            moves = candidate_moves(rollout_state, radius=self.candidate_radius)
+            moves = context.candidate_moves(rollout_state, radius=self.candidate_radius)
             if not moves:
                 break
             if rng.random() < self.epsilon:
                 chosen = rng.choice(moves)
             else:
-                chosen = max(moves, key=lambda m: self.value_model.score_move(rollout_state, to_move, m))
+                scored = self.value_model.score_moves(rollout_state, to_move, moves)
+                chosen = max(scored, key=lambda pair: pair[1])[0]
             rollout_state.apply_move(chosen)
             depth += 1
 
         if rollout_state.is_over:
             return _score_terminal_result(rollout_state.winner, root_symbol)
-        return self.value_model.evaluate(rollout_state, root_symbol)
+        cache_key = (rollout_state.state_key(), root_symbol.value)
+        cached = value_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        value = self.value_model.evaluate(rollout_state, root_symbol)
+        value_cache.set(cache_key, value)
+        return value
 
     def _select_child(self, node: _Node, rng: random.Random) -> _Node:
         if not node.children:

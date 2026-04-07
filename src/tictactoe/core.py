@@ -58,8 +58,22 @@ class Board:
                     moves.append(Move(row, col))
         return moves
 
+    def occupied_moves(self) -> list[Move]:
+        moves: list[Move] = []
+        for row in range(self.size):
+            for col in range(self.size):
+                if self.cells[row][col] is not None:
+                    moves.append(Move(row, col))
+        return moves
+
     def is_full(self) -> bool:
         return all(cell is not None for row in self.cells for cell in row)
+
+    def board_key(self) -> tuple[tuple[str, ...], ...]:
+        return tuple(
+            tuple(cell.value if cell is not None else "." for cell in row)
+            for row in self.cells
+        )
 
     def has_winning_streak(self, symbol: Symbol, move: Move) -> bool:
         if not self.in_bounds(move):
@@ -117,3 +131,20 @@ class GameState:
             self.winner = symbol
             return
         self.next_symbol = symbol.other()
+
+    def apply_move_for(self, symbol: Symbol, move: Move) -> None:
+        self.next_symbol = symbol
+        self.apply_move(move)
+
+    def occupied_moves(self) -> list[Move]:
+        return self.board.occupied_moves()
+
+    def fast_clone(self) -> "GameState":
+        cloned = GameState.new(size=self.board.size)
+        cloned.next_symbol = self.next_symbol
+        cloned.winner = self.winner
+        cloned.board.cells = [row[:] for row in self.board.cells]
+        return cloned
+
+    def state_key(self) -> tuple[tuple[str, ...], ...]:
+        return self.board.board_key()

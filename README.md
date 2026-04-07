@@ -27,6 +27,7 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
   - `New Game` button to reset/start a match
   - Current game state shown (turn/winner/draw)
 - Test suite with `pytest` for core game logic, bots, CLI/web behavior, search modules, and seeded bot-strength regression checks
+- Local benchmark script for bot performance comparisons
 
 ## Requirements
 
@@ -41,6 +42,12 @@ Run commands from the repository root.
 
 ```bash
 uv run --extra dev pytest
+```
+
+### Run benchmark
+
+```bash
+uv run python scripts/benchmark_bots.py --size 15 --games 10 --bot-x mcts --bot-o random --seed 42
 ```
 
 ### Play in terminal UI (Human vs Bot)

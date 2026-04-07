@@ -77,3 +77,28 @@ def test_draw_when_board_full_and_no_winner():
     assert state.board.is_full()
     assert state.winner is None
     assert state.is_draw
+
+
+def test_fast_clone_copies_state_without_aliasing():
+    state = GameState.new(size=10)
+    state.apply_move(Move(1, 1))
+    cloned = state.fast_clone()
+    assert cloned.next_symbol == state.next_symbol
+    assert cloned.board.cells == state.board.cells
+    cloned.apply_move(Move(2, 2))
+    assert state.board.cells[2][2] is None
+
+
+def test_apply_move_for_plays_for_explicit_symbol():
+    state = GameState.new(size=10)
+    state.apply_move_for(Symbol.O, Move(0, 0))
+    assert state.board.cells[0][0] is Symbol.O
+    assert state.next_symbol is Symbol.X
+
+
+def test_occupied_moves_returns_only_filled_cells():
+    state = GameState.new(size=10)
+    state.board.place(Symbol.X, Move(0, 0))
+    state.board.place(Symbol.O, Move(2, 2))
+    occupied = state.occupied_moves()
+    assert set(occupied) == {Move(0, 0), Move(2, 2)}

@@ -14,6 +14,11 @@ class ValueModel(Protocol):
     def score_move(self, state: GameState, symbol: Symbol, move: Move) -> float:
         """Score a candidate move for move ordering and rollouts."""
 
+    def score_moves(
+        self, state: GameState, symbol: Symbol, moves: list[Move]
+    ) -> list[tuple[Move, float]]:
+        """Score multiple candidate moves for ordering."""
+
 
 @dataclass(frozen=True)
 class HeuristicValueModel:
@@ -36,10 +41,13 @@ class HeuristicValueModel:
 
     def score_move(self, state: GameState, symbol: Symbol, move: Move) -> float:
         trial = clone_state(state)
-        if trial.next_symbol is not symbol:
-            trial.next_symbol = symbol
-        trial.apply_move(move)
+        trial.apply_move_for(symbol, move)
         return self.evaluate(trial, symbol)
+
+    def score_moves(
+        self, state: GameState, symbol: Symbol, moves: list[Move]
+    ) -> list[tuple[Move, float]]:
+        return [(move, self.score_move(state, symbol, move)) for move in moves]
 
     def _feature_score(self, state: GameState, symbol: Symbol) -> float:
         stones = 0

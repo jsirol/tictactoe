@@ -1,25 +1,29 @@
 from __future__ import annotations
 
 from tictactoe.core import GameState, Move, Symbol
+from tictactoe.search.context import SearchContext
 from tictactoe.search.move_policy import candidate_moves
 
 
-def find_immediate_winning_move(state: GameState, symbol: Symbol) -> Move | None:
-    for move in candidate_moves(state, radius=1):
+def find_immediate_winning_move(
+    state: GameState,
+    symbol: Symbol,
+    candidates: list[Move] | None = None,
+    context: SearchContext | None = None,
+) -> Move | None:
+    if candidates is None:
+        if context is not None:
+            candidates = context.candidate_moves(state, radius=1)
+        else:
+            candidates = candidate_moves(state, radius=1)
+
+    for move in candidates:
         trial = clone_state(state)
-        if trial.next_symbol is not symbol:
-            trial.next_symbol = symbol
-        trial.apply_move(move)
+        trial.apply_move_for(symbol, move)
         if trial.winner is symbol:
             return move
     return None
 
 
 def clone_state(state: GameState) -> GameState:
-    cloned = GameState.new(size=state.board.size)
-    cloned.next_symbol = state.next_symbol
-    cloned.winner = state.winner
-    for row in range(state.board.size):
-        for col in range(state.board.size):
-            cloned.board.cells[row][col] = state.board.cells[row][col]
-    return cloned
+    return state.fast_clone()

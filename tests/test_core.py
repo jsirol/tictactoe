@@ -102,3 +102,14 @@ def test_occupied_moves_returns_only_filled_cells():
     state.board.place(Symbol.O, Move(2, 2))
     occupied = state.occupied_moves()
     assert set(occupied) == {Move(0, 0), Move(2, 2)}
+
+
+def test_make_unmake_round_trip_restores_state():
+    state = GameState.new(size=10)
+    start_key = state.state_key()
+    token = state.make_move(Move(1, 1))
+    assert state.state_key() != start_key
+    state.unmake_move(token)
+    assert state.state_key() == start_key
+    assert state.next_symbol is Symbol.X
+    assert state.winner is None

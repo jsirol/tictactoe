@@ -9,7 +9,9 @@ from typing import Protocol
 from .core import GameState, Move, Symbol
 from .search.cache import BoundedCache
 from .search.context import SearchContext
+from .search.move_generator import MoveGenerationMode, generate_moves
 from .search.tactics import Threat, ThreatKind, clone_state, detect_threats
+from .search.threat_solver import solve_forcing_line
 from .search.value_model import HeuristicValueModel, ValueModel
 
 
@@ -212,6 +214,15 @@ class _TTEntry:
     score: float
     flag: str
     best_move: Move | None
+    generation: int
+
+
+@dataclass(frozen=True)
+class AlphaBetaStats:
+    depth_reached: int
+    nodes: int
+    tt_hits: int
+    cutoffs: int
 
 
 @dataclass
@@ -223,6 +234,8 @@ class AlphaBetaBot:
     threat_extension_depth: int = 1
     tt_max_size: int = 200_000
     value_model: ValueModel = field(default_factory=HeuristicValueModel)
+    aspiration_window: float = 200.0
+    last_stats: AlphaBetaStats = field(default_factory=lambda: AlphaBetaStats(0, 0, 0, 0))
 
     def choose_move(self, state: GameState, symbol: Symbol, rng: random.Random) -> Move:
         legal = state.board.legal_moves()
@@ -230,34 +243,45 @@ class AlphaBetaBot:
             raise ValueError("No legal moves available")
 
         context = SearchContext()
-        tactical = self._pick_tactical_move(state, symbol, context)
+        tactical = solve_forcing_line(state, symbol, context)
         if tactical is not None:
-            return tactical
+            return tactical.move
 
         deadline = time.perf_counter() + (self.time_budget_ms / 1000.0)
         tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry] = BoundedCache(
             max_size=self.tt_max_size
         )
+        self._killer_table = {}
+        self._history_table = {}
         max_depth = self.max_depth if self.max_depth is not None else 99
 
         best_move = legal[0]
+        prev_score = 0.0
+        nodes = 0
+        tt_hits = 0
+        cutoffs = 0
+        depth_reached = 0
         depth = 1
+        generation = 0
         while depth <= max_depth:
             if time.perf_counter() >= deadline:
                 break
-            alpha = -1_000_000_000.0
-            beta = 1_000_000_000.0
+            generation += 1
+            alpha = prev_score - self.aspiration_window
+            beta = prev_score + self.aspiration_window
             depth_best: Move | None = None
             depth_best_score = -1_000_000_000.0
             moves = self._ordered_moves(
                 state=state, symbol=symbol, context=context, tt=tt, rng=rng
             )
+            if alpha >= beta:
+                alpha, beta = -1_000_000_000.0, 1_000_000_000.0
             for move in moves:
                 if time.perf_counter() >= deadline:
                     break
                 child = state.fast_clone()
                 child.apply_move(move)
-                score = -self._negamax(
+                score, inc_nodes, inc_hits, inc_cutoffs = self._negamax(
                     state=child,
                     depth=depth - 1,
                     alpha=-beta,
@@ -267,18 +291,33 @@ class AlphaBetaBot:
                     tt=tt,
                     deadline=deadline,
                     rng=rng,
+                    generation=generation,
                 )
+                score = -score
+                nodes += inc_nodes
+                tt_hits += inc_hits
+                cutoffs += inc_cutoffs
                 if score > depth_best_score:
                     depth_best_score = score
                     depth_best = move
                 if score > alpha:
                     alpha = score
+                if score >= beta:
+                    # aspiration fail-high: retry this depth with full window
+                    alpha = -1_000_000_000.0
+                    beta = 1_000_000_000.0
+                    break
             if depth_best is not None:
                 best_move = depth_best
+                prev_score = depth_best_score
+                depth_reached = depth
             if time.perf_counter() >= deadline:
                 break
             depth += 1
 
+        self.last_stats = AlphaBetaStats(
+            depth_reached=depth_reached, nodes=nodes, tt_hits=tt_hits, cutoffs=cutoffs
+        )
         return best_move
 
     def _negamax(
@@ -292,36 +331,42 @@ class AlphaBetaBot:
         tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry],
         deadline: float,
         rng: random.Random,
-    ) -> float:
+        generation: int,
+    ) -> tuple[float, int, int, int]:
+        nodes = 1
+        tt_hits = 0
+        cutoffs = 0
         if time.perf_counter() >= deadline:
-            return self._evaluate(state, root_symbol)
+            return self._evaluate(state, root_symbol), nodes, tt_hits, cutoffs
 
         if state.is_over:
-            return self._terminal_score(state, root_symbol)
+            return self._terminal_score(state, root_symbol), nodes, tt_hits, cutoffs
 
         key = (state.state_key(), state.next_symbol.value)
         cached = tt.get(key)
         if cached is not None and cached.depth >= depth:
+            tt_hits += 1
             if cached.flag == "exact":
-                return cached.score
+                return cached.score, nodes, tt_hits, cutoffs
             if cached.flag == "lower":
                 alpha = max(alpha, cached.score)
             elif cached.flag == "upper":
                 beta = min(beta, cached.score)
             if alpha >= beta:
-                return cached.score
+                cutoffs += 1
+                return cached.score, nodes, tt_hits, cutoffs
 
         extension = 0
         if depth <= 0:
-            threats = detect_threats(state, state.next_symbol, context=context)
-            if any(t.kind in (ThreatKind.IMMEDIATE_WIN, ThreatKind.OPEN_FOUR, ThreatKind.DOUBLE_THREE) for t in threats):
+            tactical = solve_forcing_line(state, state.next_symbol, context)
+            if tactical is not None:
                 extension = self.threat_extension_depth
             else:
-                return self._evaluate(state, root_symbol)
+                return self._evaluate(state, root_symbol), nodes, tt_hits, cutoffs
 
         effective_depth = max(0, depth + extension)
         if effective_depth == 0:
-            return self._evaluate(state, root_symbol)
+            return self._evaluate(state, root_symbol), nodes, tt_hits, cutoffs
 
         original_alpha = alpha
         best_score = -1_000_000_000.0
@@ -334,29 +379,71 @@ class AlphaBetaBot:
             rng=rng,
         )
         if not moves:
-            return self._evaluate(state, root_symbol)
+            return self._evaluate(state, root_symbol), nodes, tt_hits, cutoffs
 
+        first = True
         for move in moves:
             if time.perf_counter() >= deadline:
                 break
-            child = state.fast_clone()
-            child.apply_move(move)
-            score = -self._negamax(
-                state=child,
-                depth=effective_depth - 1,
-                alpha=-beta,
-                beta=-alpha,
-                root_symbol=root_symbol,
-                context=context,
-                tt=tt,
-                deadline=deadline,
-                rng=rng,
-            )
+            token = state.make_move(move)
+            if first:
+                child_score, n, h, c = self._negamax(
+                    state=state,
+                    depth=effective_depth - 1,
+                    alpha=-beta,
+                    beta=-alpha,
+                    root_symbol=root_symbol,
+                    context=context,
+                    tt=tt,
+                    deadline=deadline,
+                    rng=rng,
+                    generation=generation,
+                )
+                score = -child_score
+                first = False
+            else:
+                # Principal variation search: null-window first.
+                child_score, n, h, c = self._negamax(
+                    state=state,
+                    depth=effective_depth - 1,
+                    alpha=-(alpha + 1),
+                    beta=-alpha,
+                    root_symbol=root_symbol,
+                    context=context,
+                    tt=tt,
+                    deadline=deadline,
+                    rng=rng,
+                    generation=generation,
+                )
+                score = -child_score
+                if alpha < score < beta:
+                    child_score, n2, h2, c2 = self._negamax(
+                        state=state,
+                        depth=effective_depth - 1,
+                        alpha=-beta,
+                        beta=-alpha,
+                        root_symbol=root_symbol,
+                        context=context,
+                        tt=tt,
+                        deadline=deadline,
+                        rng=rng,
+                        generation=generation,
+                    )
+                    score = -child_score
+                    n += n2
+                    h += h2
+                    c += c2
+            state.unmake_move(token)
+            nodes += n
+            tt_hits += h
+            cutoffs += c
             if score > best_score:
                 best_score = score
                 best_move = move
             alpha = max(alpha, score)
             if alpha >= beta:
+                self._record_cutoff(state, move, state.next_symbol)
+                cutoffs += 1
                 break
 
         if best_score <= original_alpha:
@@ -365,8 +452,17 @@ class AlphaBetaBot:
             flag = "lower"
         else:
             flag = "exact"
-        tt.set(key, _TTEntry(depth=effective_depth, score=best_score, flag=flag, best_move=best_move))
-        return best_score
+        tt.set(
+            key,
+            _TTEntry(
+                depth=effective_depth,
+                score=best_score,
+                flag=flag,
+                best_move=best_move,
+                generation=generation,
+            ),
+        )
+        return best_score, nodes, tt_hits, cutoffs
 
     def _ordered_moves(
         self,
@@ -376,7 +472,13 @@ class AlphaBetaBot:
         tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry],
         rng: random.Random,
     ) -> list[Move]:
-        candidates = context.candidate_moves(state, radius=self.candidate_radius)
+        candidates = generate_moves(
+            state,
+            symbol,
+            context=context,
+            mode=MoveGenerationMode.THREAT_FRONTIER,
+            candidate_radius=self.candidate_radius,
+        )
         if not candidates:
             return []
 
@@ -389,14 +491,17 @@ class AlphaBetaBot:
         if tt_entry is not None and tt_entry.best_move in candidates:
             tt_move = tt_entry.best_move
 
-        # deterministic shuffle for equal-score move groups to keep seeded behavior stable.
+        killer_primary = self._killer_move(state)
         ranked = []
         for move in candidates:
+            history = self._history_score(symbol, move)
             noise = rng.random() * 1e-6
             rank = (
                 1 if tt_move == move else 0,
+                1 if killer_primary == move else 0,
                 tactical_map.get(move, 0),
                 scored.get(move, -1.0),
+                history,
                 -noise,
             )
             ranked.append((rank, move))
@@ -412,16 +517,23 @@ class AlphaBetaBot:
         return self.value_model.evaluate(state, root_symbol) * 10_000.0
 
     def _pick_tactical_move(self, state: GameState, symbol: Symbol, context: SearchContext) -> Move | None:
-        own = detect_threats(state, symbol, context=context)
-        opp = detect_threats(state, symbol.other(), context=context)
-        for kind in (ThreatKind.IMMEDIATE_WIN, ThreatKind.OPEN_FOUR, ThreatKind.DOUBLE_THREE):
-            own_move = _first_threat_move(own, kind)
-            if own_move is not None:
-                return own_move
-            opp_move = _first_threat_move(opp, kind)
-            if opp_move is not None:
-                return opp_move
-        return None
+        solution = solve_forcing_line(state, symbol, context)
+        return None if solution is None else solution.move
+
+    def _killer_move(self, state: GameState) -> Move | None:
+        return getattr(self, "_killer_table", {}).get((state.next_symbol.value, state.state_key()))
+
+    def _history_score(self, symbol: Symbol, move: Move) -> float:
+        return getattr(self, "_history_table", {}).get((symbol.value, move.row, move.col), 0.0)
+
+    def _record_cutoff(self, state: GameState, move: Move, symbol: Symbol) -> None:
+        if not hasattr(self, "_killer_table"):
+            self._killer_table = {}
+        if not hasattr(self, "_history_table"):
+            self._history_table = {}
+        self._killer_table[(symbol.value, state.state_key())] = move
+        key = (symbol.value, move.row, move.col)
+        self._history_table[key] = self._history_table.get(key, 0.0) + 1.0
 
 def _score_terminal_result(winner: Symbol | None, root_symbol: Symbol) -> float:
     if winner is None:

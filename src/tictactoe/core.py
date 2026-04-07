@@ -25,6 +25,13 @@ class InvalidMove(ValueError):
     pass
 
 
+@dataclass(frozen=True)
+class UndoToken:
+    move: Move
+    previous_next_symbol: Symbol
+    previous_winner: Symbol | None
+
+
 @dataclass
 class Board:
     size: int
@@ -122,19 +129,34 @@ class GameState:
         return self.winner is not None or self.is_draw
 
     def apply_move(self, move: Move) -> None:
+        self.make_move(move)
+
+    def make_move(self, move: Move) -> UndoToken:
         if self.is_over:
             raise InvalidMove("Game is already over")
 
         symbol = self.next_symbol
+        token = UndoToken(move=move, previous_next_symbol=self.next_symbol, previous_winner=self.winner)
         self.board.place(symbol, move)
         if self.board.has_winning_streak(symbol, move):
             self.winner = symbol
-            return
-        self.next_symbol = symbol.other()
+        else:
+            self.next_symbol = symbol.other()
+        return token
+
+    def unmake_move(self, token: UndoToken) -> None:
+        move = token.move
+        if not self.board.in_bounds(move):
+            raise InvalidMove(f"Move out of bounds: {move}")
+        if self.board.cells[move.row][move.col] is None:
+            raise InvalidMove(f"Cannot unmake empty cell: {move}")
+        self.board.cells[move.row][move.col] = None
+        self.next_symbol = token.previous_next_symbol
+        self.winner = token.previous_winner
 
     def apply_move_for(self, symbol: Symbol, move: Move) -> None:
         self.next_symbol = symbol
-        self.apply_move(move)
+        self.make_move(move)
 
     def occupied_moves(self) -> list[Move]:
         return self.board.occupied_moves()

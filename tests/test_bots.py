@@ -151,3 +151,11 @@ def test_alphabeta_bot_blocks_immediate_win():
     state.board.place(Symbol.X, Move(1, 4))
     bot = AlphaBetaBot(time_budget_ms=30, max_depth=2)
     assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(2)) in {Move(1, 0), Move(1, 5)}
+
+
+def test_alphabeta_exposes_search_stats():
+    state = GameState.new(size=10)
+    state.apply_move(Move(5, 5))
+    bot = AlphaBetaBot(time_budget_ms=30, max_depth=2)
+    bot.choose_move(state=state, symbol=state.next_symbol, rng=random.Random(5))
+    assert bot.last_stats.depth_reached >= 1

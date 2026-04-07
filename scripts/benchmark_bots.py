@@ -27,6 +27,18 @@ def run_benchmark(size: int, games: int, bot_x_name: str, bot_o_name: str, seed:
         f"games={games}, board={size}x{size}, X={bot_x_name}, O={bot_o_name}, "
         f"elapsed={elapsed:.2f}s, avg_game={avg_game_ms:.1f}ms, avg_move={avg_move_ms:.2f}ms"
     )
+    if hasattr(bot_x, "last_stats"):
+        stats = bot_x.last_stats
+        print(
+            f"X stats: depth={stats.depth_reached}, nodes={stats.nodes}, "
+            f"tt_hits={stats.tt_hits}, cutoffs={stats.cutoffs}"
+        )
+    if hasattr(bot_o, "last_stats"):
+        stats = bot_o.last_stats
+        print(
+            f"O stats: depth={stats.depth_reached}, nodes={stats.nodes}, "
+            f"tt_hits={stats.tt_hits}, cutoffs={stats.cutoffs}"
+        )
 
 
 def main() -> int:

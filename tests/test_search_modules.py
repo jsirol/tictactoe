@@ -3,6 +3,7 @@ import random
 from tictactoe.core import GameState, Move, Symbol
 from tictactoe.search.cache import BoundedCache
 from tictactoe.search.context import SearchContext
+from tictactoe.search.move_generator import MoveGenerationMode, generate_moves
 from tictactoe.search.move_policy import candidate_moves
 from tictactoe.search.tactics import (
     ThreatKind,
@@ -10,6 +11,7 @@ from tictactoe.search.tactics import (
     find_forcing_threat_move,
     find_immediate_winning_move,
 )
+from tictactoe.search.threat_solver import solve_forcing_line
 from tictactoe.search.value_model import HeuristicValueModel
 
 
@@ -155,3 +157,38 @@ def test_bounded_cache_evicts_oldest():
     assert cache.get("a") == 1
     assert cache.get("b") is None
     assert cache.get("c") == 3
+
+
+def test_generate_moves_threat_frontier_prefers_tactical_set():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.X
+    state.board.place(Symbol.X, Move(5, 4))
+    state.board.place(Symbol.X, Move(5, 6))
+    state.board.place(Symbol.X, Move(4, 5))
+    state.board.place(Symbol.X, Move(6, 5))
+    context = SearchContext()
+    moves = generate_moves(
+        state, Symbol.X, context=context, mode=MoveGenerationMode.THREAT_FRONTIER, candidate_radius=1
+    )
+    assert Move(5, 5) in moves
+
+
+def test_threat_solver_returns_forcing_solution():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.O
+    state.board.place(Symbol.O, Move(2, 0))
+    state.board.place(Symbol.O, Move(2, 1))
+    state.board.place(Symbol.O, Move(2, 2))
+    state.board.place(Symbol.O, Move(2, 3))
+    solution = solve_forcing_line(state, Symbol.O, SearchContext())
+    assert solution is not None
+    assert solution.kind is ThreatKind.IMMEDIATE_WIN
+    assert solution.move == Move(2, 4)
+
+
+def test_value_model_explain_features_contains_total():
+    state = GameState.new(size=10)
+    state.board.place(Symbol.X, Move(5, 5))
+    model = HeuristicValueModel()
+    features = model.explain_features(state, Symbol.X)
+    assert "total" in features

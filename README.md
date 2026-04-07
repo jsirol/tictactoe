@@ -20,7 +20,9 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
   - Implemented bots: `RandomBot`, `MCTSBot`, and `AlphaBetaBot` (seedable RNG support)
   - Reusable search modules for stronger bots:
     - frontier move policy
+    - pluggable move generation modes (`full_legal`, `frontier`, `threat_frontier`)
     - tactical immediate win/block checks
+    - forcing-line threat solver utility
     - heuristic value model (reusable across bots)
 - Browser UI:
   - Clickable grid board in the web page
@@ -49,6 +51,8 @@ uv run --extra dev pytest
 ```bash
 uv run python scripts/benchmark_bots.py --size 15 --games 10 --bot-x alphabeta --bot-o mcts --seed 42
 ```
+
+For alpha-beta bots, benchmark output also includes search stats (`depth`, `nodes`, `tt_hits`, `cutoffs`).
 
 ### Play in terminal UI (Human vs Bot)
 

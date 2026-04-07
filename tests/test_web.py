@@ -21,6 +21,8 @@ def test_new_game_creates_empty_board_and_sets_cookie():
     assert payload["winner"] is None
     assert payload["is_over"] is False
     assert payload["board"][0][0] is None
+    assert payload["bot"]["type"] == "mcts"
+    assert "policy_value_model" in payload["bot"]
     assert "ttt_session_id=" in response.headers["set-cookie"]
 
 
@@ -30,6 +32,7 @@ def test_get_game_returns_same_session_game():
     response = client.get("/api/game")
     assert response.status_code == 200
     assert response.json()["size"] == 10
+    assert response.json()["bot"]["type"] == "mcts"
 
 
 def test_human_move_is_followed_by_bot_move_when_game_continues():
@@ -42,6 +45,7 @@ def test_human_move_is_followed_by_bot_move_when_game_continues():
     assert board[0][0] == "X"
     assert occupied == 2
     assert response.json()["next_symbol"] == "X"
+    assert response.json()["bot"]["type"] == "random"
 
 
 def test_invalid_human_move_returns_400():
@@ -71,7 +75,13 @@ def test_new_game_accepts_alphabeta_bot():
 
 
 def test_new_game_accepts_mcts_with_loaded_model(monkeypatch):
+    class DummyNet:
+        pass
+
     class DummyModel:
+        def __init__(self):
+            self._model = DummyNet()
+
         def predict(self, state, symbol, candidate_moves):
             return {}, 0.0
 
@@ -82,3 +92,6 @@ def test_new_game_accepts_mcts_with_loaded_model(monkeypatch):
     client = TestClient(create_app(default_size=10, default_seed=0, default_bot="mcts"))
     response = client.post("/api/game/new", json={"size": 10, "bot": "mcts"})
     assert response.status_code == 200
+    payload = response.json()
+    assert payload["bot"]["type"] == "mcts"
+    assert payload["bot"]["policy_value_model"] == "DummyModel"

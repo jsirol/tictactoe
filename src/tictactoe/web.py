@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
 from .model_loader import load_mcts_policy_value_model
+from .search.torch_policy_value import TorchPolicyValueModel
 from .search.value_model import HeuristicValueModel
 from .weight_store import load_best_weights_if_exists, load_weights_file
 
@@ -46,6 +47,24 @@ def _serialize_state(state: GameState) -> dict[str, Any]:
         "is_draw": state.is_draw,
         "is_over": state.is_over,
     }
+
+
+def _serialize_bot(bot: Bot) -> dict[str, str]:
+    bot_type = bot.name
+    policy_value = "heuristic"
+    model_path = "n/a"
+    model = getattr(bot, "policy_value_model", None)
+    if model is not None:
+        policy_value = type(model).__name__
+        if isinstance(model, TorchPolicyValueModel):
+            model_path = model.model_path
+    return {"type": bot_type, "policy_value_model": policy_value, "model_path": model_path}
+
+
+def _serialize_session(session: SessionData) -> dict[str, Any]:
+    payload = _serialize_state(session.state)
+    payload["bot"] = _serialize_bot(session.bot)
+    return payload
 
 
 def _get_bot(name: str, weights_file: str | None = None) -> Bot:
@@ -146,6 +165,7 @@ def create_app(
       <input id="seed" type="number" placeholder="e.g. 42" />
       <button id="new-game">New Game</button>
       <p id="status" class="status"></p>
+      <p id="bot-info" style="font-size:0.9rem; color:#374151; margin-top:.25rem;"></p>
     </section>
     <section class="panel">
       <div id="board"></div>
@@ -154,6 +174,7 @@ def create_app(
   <script>
     const boardEl = document.getElementById("board");
     const statusEl = document.getElementById("status");
+    const botInfoEl = document.getElementById("bot-info");
     const sizeEl = document.getElementById("size");
     const seedEl = document.getElementById("seed");
     const newBtn = document.getElementById("new-game");
@@ -179,6 +200,9 @@ def create_app(
       } else {
         statusEl.textContent = "Turn: " + state.next_symbol;
       }
+      const bot = state.bot || {};
+      const modelPath = bot.model_path && bot.model_path !== "n/a" ? ` (${bot.model_path})` : "";
+      botInfoEl.textContent = `Bot: ${bot.type || "unknown"} | Policy/Value: ${bot.policy_value_model || "unknown"}${modelPath}`;
     }
 
     function renderBoard(state) {
@@ -258,14 +282,14 @@ def create_app(
 
         sid = uuid.uuid4().hex
         request.app.state.sessions[sid] = session
-        response = JSONResponse(_serialize_state(session.state))
+        response = JSONResponse(_serialize_session(session))
         response.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="lax")
         return response
 
     @app.get("/api/game")
     def get_game(request: Request) -> JSONResponse:
         sid, session = _ensure_session(request)
-        response = JSONResponse(_serialize_state(session.state))
+        response = JSONResponse(_serialize_session(session))
         response.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="lax")
         return response
 
@@ -283,7 +307,7 @@ def create_app(
         except InvalidMove as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        response = JSONResponse(_serialize_state(session.state))
+        response = JSONResponse(_serialize_session(session))
         response.set_cookie(SESSION_COOKIE, sid, httponly=True, samesite="lax")
         return response
 

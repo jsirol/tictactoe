@@ -29,3 +29,21 @@ def test_main_simulate_subcommand_runs():
 def test_main_rejects_invalid_size():
     code = main(["simulate", "--size", "9"])
     assert code == 2
+
+
+def test_main_rejects_invalid_size_for_web():
+    code = main(["web", "--size", "9"])
+    assert code == 2
+
+
+def test_main_web_subcommand_runs(monkeypatch):
+    called = {}
+
+    def fake_run(*, host, port, size, seed):
+        called["args"] = (host, port, size, seed)
+        return 0
+
+    monkeypatch.setattr("tictactoe.cli.run_web_server", fake_run)
+    code = main(["web", "--host", "127.0.0.1", "--port", "9000", "--size", "10", "--seed", "2"])
+    assert code == 0
+    assert called["args"] == ("127.0.0.1", 9000, 10, 2)

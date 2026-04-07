@@ -4,8 +4,11 @@ import argparse
 import random
 from typing import Sequence
 
+import uvicorn
+
 from .bots import Bot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
+from .web import create_app
 
 
 def parse_move(raw: str) -> Move:
@@ -65,6 +68,14 @@ def run_simulation(size: int, games: int, seed: int | None = None) -> dict[str, 
     return result
 
 
+def run_web_server(host: str, port: int, size: int, seed: int | None = None) -> int:
+    if size < MIN_BOARD_SIZE:
+        raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
+    app = create_app(default_size=size, default_seed=seed)
+    uvicorn.run(app, host=host, port=port)
+    return 0
+
+
 def run_play(size: int, seed: int | None = None, bot_name: str = "random") -> int:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
@@ -110,6 +121,12 @@ def build_parser() -> argparse.ArgumentParser:
     simulate.add_argument("--games", type=int, default=1)
     simulate.add_argument("--seed", type=int, default=None)
 
+    web = subparsers.add_parser("web", help="Run browser-based UI")
+    web.add_argument("--host", type=str, default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8000)
+    web.add_argument("--size", type=int, default=15)
+    web.add_argument("--seed", type=int, default=None)
+
     return parser
 
 
@@ -124,6 +141,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = run_simulation(size=args.size, games=args.games, seed=args.seed)
             print(f"X wins: {result['X']}, O wins: {result['O']}, draws: {result['draw']}")
             return 0
+        if args.command == "web":
+            return run_web_server(host=args.host, port=args.port, size=args.size, seed=args.seed)
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2

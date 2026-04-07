@@ -138,6 +138,12 @@ uv run tictactoe selfplay \
   --output-dir data/selfplay
 ```
 
+To make web/CLI MCTS use your newest net by default, copy/link your chosen model to:
+
+```bash
+cp data/models/pv_<timestamp>.torchscript.pt data/models/latest.torchscript.pt
+```
+
 ## 8) Typical Loop (Manual)
 
 1. Run self-play to refresh `data/selfplay/manifest.json`.

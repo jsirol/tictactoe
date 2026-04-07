@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
+from .model_loader import load_mcts_policy_value_model
 from .search.value_model import HeuristicValueModel
 from .weight_store import load_best_weights_if_exists, load_weights_file
 
@@ -51,7 +52,10 @@ def _get_bot(name: str, weights_file: str | None = None) -> Bot:
     if name == "random":
         return RandomBot()
     if name == "mcts":
-        return MCTSBot()
+        policy_model = load_mcts_policy_value_model()
+        if policy_model is None:
+            return MCTSBot()
+        return MCTSBot(policy_value_model=policy_model)
     if name == "alphabeta":
         weights = None
         if weights_file:

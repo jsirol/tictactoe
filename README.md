@@ -182,6 +182,9 @@ Optional flags:
 - `--seed <INT>` optional deterministic seed for bot behavior
 - `--bot <random|mcts|alphabeta>` bot used in web games (default: `mcts`)
 
+For `mcts`, the app tries to load `data/models/latest.torchscript.pt` automatically.
+If that file is missing or fails to load, it falls back to default heuristic MCTS behavior.
+
 Example:
 
 ```bash

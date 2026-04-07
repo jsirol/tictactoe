@@ -68,3 +68,17 @@ def test_new_game_accepts_alphabeta_bot():
     client = TestClient(create_app(default_size=10, default_seed=0))
     response = client.post("/api/game/new", json={"size": 10, "bot": "alphabeta"})
     assert response.status_code == 200
+
+
+def test_new_game_accepts_mcts_with_loaded_model(monkeypatch):
+    class DummyModel:
+        def predict(self, state, symbol, candidate_moves):
+            return {}, 0.0
+
+        def predict_batch(self, items):
+            return [({}, 0.0) for _ in items]
+
+    monkeypatch.setattr("tictactoe.web.load_mcts_policy_value_model", lambda: DummyModel())
+    client = TestClient(create_app(default_size=10, default_seed=0, default_bot="mcts"))
+    response = client.post("/api/game/new", json={"size": 10, "bot": "mcts"})
+    assert response.status_code == 200

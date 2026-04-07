@@ -1,6 +1,8 @@
 import pytest
 
 from tictactoe.cli import get_bot, main, parse_move, run_simulation
+from tictactoe.search.policy_value import HeuristicPolicyValueModel
+from tictactoe.search.value_model import HeuristicValueModel
 from tictactoe.core import Move
 
 
@@ -70,6 +72,14 @@ def test_main_rejects_invalid_size():
 def test_get_bot_supports_mcts():
     bot = get_bot("mcts")
     assert bot.name == "mcts"
+
+
+def test_get_bot_mcts_uses_default_model_when_available(monkeypatch):
+    fake_model = HeuristicPolicyValueModel(HeuristicValueModel())
+    monkeypatch.setattr("tictactoe.cli.load_mcts_policy_value_model", lambda: fake_model)
+    bot = get_bot("mcts")
+    assert bot.name == "mcts"
+    assert getattr(bot, "policy_value_model", None) is fake_model
 
 
 def test_get_bot_supports_alphabeta():

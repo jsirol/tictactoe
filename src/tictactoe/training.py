@@ -41,6 +41,7 @@ class TrainingConfig:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     seed: int = 1
+    init_checkpoint_path: str | None = None
     log_every_steps: int = 20
     policy_loss_weight: float = 1.0
     value_loss_weight: float = 1.0
@@ -84,6 +85,15 @@ def run_training(config: TrainingConfig, logger: Callable[[str], None] = print) 
     logger("[4/5] Training")
     torch.manual_seed(config.seed)
     model = SmallPolicyValueNet(board_size=board_size)
+    if config.init_checkpoint_path:
+        init_path = Path(config.init_checkpoint_path)
+        if init_path.exists():
+            raw = torch.load(str(init_path), map_location="cpu")
+            state_dict = raw.get("model_state_dict", raw)
+            model.load_state_dict(state_dict, strict=True)
+            logger(f"  warm-started from checkpoint={init_path}")
+        else:
+            logger(f"  warm-start checkpoint not found, training from scratch: {init_path}")
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.lr,
@@ -140,6 +150,7 @@ def run_training(config: TrainingConfig, logger: Callable[[str], None] = print) 
                 "lr": config.lr,
                 "weight_decay": config.weight_decay,
                 "seed": config.seed,
+                "init_checkpoint_path": config.init_checkpoint_path,
             },
             "source": {
                 "train_path": str(source.train_path),

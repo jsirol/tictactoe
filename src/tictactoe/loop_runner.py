@@ -17,6 +17,7 @@ class LoopConfig:
     iterations: int = 10
     games_per_run: int = 10
     checkpoint_every: int = 5
+    warmstart_from_latest: bool = True
     seed: int = 1
     initial_model_path: str | None = None
 
@@ -40,6 +41,7 @@ class LoopConfig:
     train_log_every_steps: int = 20
     policy_loss_weight: float = 1.0
     value_loss_weight: float = 1.0
+    web_mcts_model_path: str = "data/models/latest.torchscript.pt"
 
 
 def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
@@ -60,10 +62,13 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
     latest_model_path = base_dir / "latest.torchscript.pt"
     best_model_path = base_dir / "best.torchscript.pt"
     final_model_path = base_dir / "final.torchscript.pt"
+    published_web_model_path = Path(config.web_mcts_model_path)
+    published_web_model_path.parent.mkdir(parents=True, exist_ok=True)
 
     best_loss = float("nan")
     best_iteration = 0
     current_model_path = config.initial_model_path
+    latest_checkpoint_path: Path | None = None
     loop_start = time.perf_counter()
     with history_path.open("w", encoding="utf-8") as history_file:
         for iteration in range(1, config.iterations + 1):
@@ -79,10 +84,12 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
                     return
                 completed_games += 1
                 produced_samples += int(event.get("samples", 0))
+                worker_id = event.get("worker_id")
                 elapsed = max(1e-9, time.perf_counter() - selfplay_start)
                 gpm = (completed_games / elapsed) * 60.0
                 logger(
-                    f"  self-play progress: {completed_games}/{config.games_per_run} games "
+                    f"  self-play progress: worker={worker_id} game_done, "
+                    f"total={completed_games}/{config.games_per_run} "
                     f"(samples={produced_samples}, gpm={gpm:.2f})"
                 )
 
@@ -123,6 +130,11 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
                     lr=config.lr,
                     weight_decay=config.weight_decay,
                     seed=config.seed + iteration - 1,
+                    init_checkpoint_path=(
+                        str(latest_checkpoint_path)
+                        if (config.warmstart_from_latest and latest_checkpoint_path is not None)
+                        else None
+                    ),
                     log_every_steps=config.train_log_every_steps,
                     policy_loss_weight=config.policy_loss_weight,
                     value_loss_weight=config.value_loss_weight,
@@ -135,9 +147,11 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
             iter_torchscript = Path(training_meta["artifacts"]["torchscript"])
             iter_checkpoint = Path(training_meta["artifacts"]["checkpoint"])
             iter_meta = train_out_dir / f"{train_run_name}.meta.json"
+            latest_checkpoint_path = iter_checkpoint
 
             shutil.copy2(iter_torchscript, latest_model_path)
             shutil.copy2(iter_meta, latest_meta_path)
+            shutil.copy2(iter_torchscript, published_web_model_path)
             current_model_path = str(latest_model_path)
 
             # Promotion rule: latest model is always canonical "best" for online training loops.
@@ -175,6 +189,7 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
 
     if latest_model_path.exists():
         shutil.copy2(latest_model_path, final_model_path)
+        shutil.copy2(latest_model_path, published_web_model_path)
 
     elapsed = time.perf_counter() - loop_start
     summary = {
@@ -189,6 +204,7 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
         "best_model": str(best_model_path) if best_model_path.exists() else None,
         "final_model": str(final_model_path) if final_model_path.exists() else None,
         "history": str(history_path),
+        "web_mcts_model": str(published_web_model_path) if published_web_model_path.exists() else None,
     }
     logger(
         "\nLoop complete: "
@@ -196,6 +212,7 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
         f"latest={summary['latest_model']}\n"
         f"best={summary['best_model']}\n"
         f"final={summary['final_model']}\n"
+        f"web_mcts_model={summary['web_mcts_model']}\n"
         f"history={summary['history']}"
     )
     return summary

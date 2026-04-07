@@ -170,6 +170,13 @@ uv run python scripts/run_selfplay_train_loop.py \
   --workers 12
 ```
 
+By default, each loop iteration also publishes the newest model to:
+`data/models/latest.torchscript.pt` (used automatically by web/CLI MCTS).
+You can override with `--web-mcts-model-path`.
+
+The loop warm-starts each training iteration from the previous iteration checkpoint by default.
+Disable with `--no-warmstart-from-latest`.
+
 Outputs under `data/models/loops/<run_name>/`:
 - `latest.torchscript.pt`
 - `best.torchscript.pt` (promoted latest model alias)
@@ -178,3 +185,4 @@ Outputs under `data/models/loops/<run_name>/`:
 - `loop_history.jsonl` with per-iteration metrics
 
 During self-play in each iteration, progress is printed per completed game with running games/min.
+Progress lines include `worker=<id>` so parallel execution is visible.

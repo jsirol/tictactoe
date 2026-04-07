@@ -12,11 +12,13 @@ def main() -> int:
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--games-per-run", type=int, default=10)
     parser.add_argument("--checkpoint-every", type=int, default=5)
+    parser.add_argument("--no-warmstart-from-latest", action="store_true")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--initial-model-path", type=str, default=None)
 
     parser.add_argument("--selfplay-output-dir", type=str, default="data/selfplay")
     parser.add_argument("--models-dir", type=str, default="data/models/loops")
+    parser.add_argument("--web-mcts-model-path", type=str, default="data/models/latest.torchscript.pt")
     parser.add_argument("--size", type=int, default=10)
     parser.add_argument("--workers", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -44,10 +46,12 @@ def main() -> int:
             iterations=args.iterations,
             games_per_run=args.games_per_run,
             checkpoint_every=args.checkpoint_every,
+            warmstart_from_latest=not args.no_warmstart_from_latest,
             seed=args.seed,
             initial_model_path=args.initial_model_path,
             selfplay_output_dir=args.selfplay_output_dir,
             models_dir=args.models_dir,
+            web_mcts_model_path=args.web_mcts_model_path,
             board_size=args.size,
             workers=args.workers,
             batch_size=args.batch_size,

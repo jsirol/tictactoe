@@ -115,7 +115,7 @@ class MCTSBot:
             else:
                 if not node.policy_priors:
                     candidates = context.candidate_moves(node.state, radius=self.candidate_radius)
-                    priors, value = pv_model.predict(node.state, symbol, candidates)
+                    priors, value = self._predict_policy_value(pv_model, node.state, symbol, candidates)
                     if node.parent is None and priors and self.root_noise_fraction > 0.0:
                         priors = self._apply_root_noise(priors, rng)
                     node.policy_priors = priors
@@ -142,8 +142,11 @@ class MCTSBot:
                     if node.state.is_over:
                         leaf_value = _score_terminal_result(node.state.winner, symbol)
                     else:
-                        _, leaf_value = pv_model.predict(
-                            node.state, symbol, context.candidate_moves(node.state, radius=self.candidate_radius)
+                        _, leaf_value = self._predict_policy_value(
+                            pv_model,
+                            node.state,
+                            symbol,
+                            context.candidate_moves(node.state, radius=self.candidate_radius),
                         )
 
             for seen in path:
@@ -230,6 +233,22 @@ class MCTSBot:
             if seen >= pick:
                 return child.move
         return children[-1].move
+
+    def _predict_policy_value(
+        self,
+        model: PolicyValueModel,
+        state: GameState,
+        symbol: Symbol,
+        candidates: list[Move],
+    ) -> tuple[dict[Move, float], float]:
+        try:
+            return model.predict(state, symbol, candidates)
+        except Exception:
+            # Fallback to heuristic model when loaded policy/value model is incompatible
+            # (for example board-size mismatch in a torchscript artifact).
+            self.policy_value_model = None
+            fallback = HeuristicPolicyValueModel(self.value_model)
+            return fallback.predict(state, symbol, candidates)
 
 
 @dataclass(frozen=True)

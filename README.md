@@ -2,6 +2,8 @@
 
 Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
 
+For full self-play + training usage, see [`SELFPLAY_README.md`](SELFPLAY_README.md).
+
 ## Implemented Features
 
 - Python project managed with `uv`

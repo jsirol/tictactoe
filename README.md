@@ -141,6 +141,28 @@ Optional:
 - `--model-path <PATH>` load a torchscript policy/value model (falls back to heuristic when unavailable)
 - `--determinism <balanced|strict|fast>` reproducibility/throughput mode
 
+Self-play writes a JSONL shard plus `manifest.json` under `data/selfplay/`.  
+Training samples (`kind=sample`) include: `obs`, `policy_target`, `value_target`, `action_mask`, `player_to_move`, `game_id`, `ply`, `model_version`.
+
+### Run one headless policy/value training pass
+
+Install RL dependency once:
+
+```bash
+uv sync --extra rl
+```
+
+Train from the latest self-play manifest:
+
+```bash
+uv run python scripts/train_policy_value.py --data-manifest data/selfplay/manifest.json --epochs 5 --batch-size 128 --out-dir data/models
+```
+
+This creates:
+- `<run_name>.pt` (training checkpoint)
+- `<run_name>.torchscript.pt` (inference artifact for `--model-path`)
+- `<run_name>.meta.json` (run summary + metrics + source data)
+
 ### Run browser UI
 
 ```bash

@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+from tictactoe.core import GameState, Move, Symbol
+from tictactoe.search.tactics import clone_state
+
+
+class ValueModel(Protocol):
+    def evaluate(self, state: GameState, for_symbol: Symbol) -> float:
+        """Return a normalized value estimate in [-1, 1]."""
+
+    def score_move(self, state: GameState, symbol: Symbol, move: Move) -> float:
+        """Score a candidate move for move ordering and rollouts."""
+
+
+@dataclass(frozen=True)
+class HeuristicValueModel:
+    line_weight: float = 0.35
+    center_weight: float = 0.05
+    stone_weight: float = 0.03
+
+    def evaluate(self, state: GameState, for_symbol: Symbol) -> float:
+        if state.winner is for_symbol:
+            return 1.0
+        if state.winner is for_symbol.other():
+            return -1.0
+        if state.is_draw:
+            return 0.0
+
+        our = self._feature_score(state, for_symbol)
+        their = self._feature_score(state, for_symbol.other())
+        raw = our - their
+        return max(-1.0, min(1.0, raw))
+
+    def score_move(self, state: GameState, symbol: Symbol, move: Move) -> float:
+        trial = clone_state(state)
+        if trial.next_symbol is not symbol:
+            trial.next_symbol = symbol
+        trial.apply_move(move)
+        return self.evaluate(trial, symbol)
+
+    def _feature_score(self, state: GameState, symbol: Symbol) -> float:
+        stones = 0
+        center_bonus = 0.0
+        max_line = 0
+        center = (state.board.size - 1) / 2.0
+        for row in range(state.board.size):
+            for col in range(state.board.size):
+                if state.board.cells[row][col] is symbol:
+                    stones += 1
+                    center_bonus += (state.board.size - (abs(row - center) + abs(col - center)))
+                    max_line = max(max_line, _max_line_from(state, symbol, Move(row, col)))
+
+        if stones == 0:
+            return 0.0
+        normalized_center = center_bonus / (state.board.size * stones * 2)
+        line_term = (max_line / 5.0) ** 2
+        stone_term = stones / (state.board.size * state.board.size)
+        return (self.line_weight * line_term) + (self.center_weight * normalized_center) + (
+            self.stone_weight * stone_term
+        )
+
+
+def _max_line_from(state: GameState, symbol: Symbol, move: Move) -> int:
+    directions = ((1, 0), (0, 1), (1, 1), (1, -1))
+    best = 1
+    for dr, dc in directions:
+        count = 1
+        count += _count_direction(state, symbol, move, dr, dc)
+        count += _count_direction(state, symbol, move, -dr, -dc)
+        best = max(best, count)
+    return best
+
+
+def _count_direction(state: GameState, symbol: Symbol, start: Move, dr: int, dc: int) -> int:
+    row = start.row + dr
+    col = start.col + dc
+    count = 0
+    while 0 <= row < state.board.size and 0 <= col < state.board.size:
+        if state.board.cells[row][col] is not symbol:
+            break
+        count += 1
+        row += dr
+        col += dc
+    return count

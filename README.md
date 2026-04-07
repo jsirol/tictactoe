@@ -18,11 +18,15 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
 - Bot architecture:
   - Shared bot protocol/interface
   - Implemented bots: `RandomBot` and `MCTSBot` (seedable RNG support)
+  - Reusable search modules for stronger bots:
+    - frontier move policy
+    - tactical immediate win/block checks
+    - heuristic value model (reusable across bots)
 - Browser UI:
   - Clickable grid board in the web page
   - `New Game` button to reset/start a match
   - Current game state shown (turn/winner/draw)
-- Test suite with `pytest` for core game logic, bots, CLI behavior, and web API
+- Test suite with `pytest` for core game logic, bots, CLI/web behavior, search modules, and seeded bot-strength regression checks
 
 ## Requirements
 

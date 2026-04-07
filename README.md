@@ -53,6 +53,7 @@ uv run python scripts/benchmark_bots.py --size 15 --games 10 --bot-x alphabeta -
 ```
 
 For alpha-beta bots, benchmark output also includes search stats (`depth`, `nodes`, `tt_hits`, `cutoffs`).
+Default alpha-beta search budget is tuned for stronger tactical play (`~800ms` per move).
 
 ### Play in terminal UI (Human vs Bot)
 

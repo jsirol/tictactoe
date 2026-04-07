@@ -11,7 +11,7 @@ from .search.cache import BoundedCache
 from .search.context import SearchContext
 from .search.move_generator import MoveGenerationMode, generate_moves
 from .search.tactics import Threat, ThreatKind, clone_state, detect_threats
-from .search.threat_solver import solve_forcing_line
+from .search.threat_solver import ThreatSolutionStatus, solve_forcing_line
 from .search.value_model import HeuristicValueModel, ValueModel
 
 
@@ -228,11 +228,12 @@ class AlphaBetaStats:
 @dataclass
 class AlphaBetaBot:
     name: str = "alphabeta"
-    time_budget_ms: int = 500
+    time_budget_ms: int = 800
     max_depth: int | None = None
     candidate_radius: int = 1
     threat_extension_depth: int = 1
     tt_max_size: int = 200_000
+    threat_solver_max_ply: int = 6
     value_model: ValueModel = field(default_factory=HeuristicValueModel)
     aspiration_window: float = 200.0
     last_stats: AlphaBetaStats = field(default_factory=lambda: AlphaBetaStats(0, 0, 0, 0))
@@ -243,7 +244,7 @@ class AlphaBetaBot:
             raise ValueError("No legal moves available")
 
         context = SearchContext()
-        tactical = solve_forcing_line(state, symbol, context)
+        tactical = solve_forcing_line(state, symbol, context, max_ply=self.threat_solver_max_ply)
         if tactical is not None:
             return tactical.move
 
@@ -358,8 +359,10 @@ class AlphaBetaBot:
 
         extension = 0
         if depth <= 0:
-            tactical = solve_forcing_line(state, state.next_symbol, context)
-            if tactical is not None:
+            tactical = solve_forcing_line(
+                state, state.next_symbol, context, max_ply=min(3, self.threat_solver_max_ply)
+            )
+            if tactical is not None and tactical.status is not ThreatSolutionStatus.UNRESOLVED:
                 extension = self.threat_extension_depth
             else:
                 return self._evaluate(state, root_symbol), nodes, tt_hits, cutoffs
@@ -472,12 +475,19 @@ class AlphaBetaBot:
         tt: BoundedCache[tuple[tuple[tuple[str, ...], ...], str], _TTEntry],
         rng: random.Random,
     ) -> list[Move]:
+        own_threats = detect_threats(state, symbol, context=context)
+        opp_threats = detect_threats(state, symbol.other(), context=context)
+        high_tactical = any(
+            t.kind in (ThreatKind.IMMEDIATE_WIN, ThreatKind.OPEN_FOUR, ThreatKind.DOUBLE_THREE)
+            for t in (own_threats + opp_threats)
+        )
+        mode = MoveGenerationMode.THREAT_FRONTIER if high_tactical else MoveGenerationMode.FRONTIER
         candidates = generate_moves(
             state,
             symbol,
             context=context,
-            mode=MoveGenerationMode.THREAT_FRONTIER,
-            candidate_radius=self.candidate_radius,
+            mode=mode,
+            candidate_radius=self.candidate_radius if high_tactical else max(1, self.candidate_radius + 1),
         )
         if not candidates:
             return []
@@ -517,7 +527,7 @@ class AlphaBetaBot:
         return self.value_model.evaluate(state, root_symbol) * 10_000.0
 
     def _pick_tactical_move(self, state: GameState, symbol: Symbol, context: SearchContext) -> Move | None:
-        solution = solve_forcing_line(state, symbol, context)
+        solution = solve_forcing_line(state, symbol, context, max_ply=self.threat_solver_max_ply)
         return None if solution is None else solution.move
 
     def _killer_move(self, state: GameState) -> Move | None:

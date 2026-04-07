@@ -184,6 +184,7 @@ def test_threat_solver_returns_forcing_solution():
     assert solution is not None
     assert solution.kind is ThreatKind.IMMEDIATE_WIN
     assert solution.move == Move(2, 4)
+    assert solution.status.value == "forced_win"
 
 
 def test_value_model_explain_features_contains_total():

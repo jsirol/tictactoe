@@ -1,4 +1,6 @@
-from tictactoe.cli import main, parse_move, run_simulation
+import pytest
+
+from tictactoe.cli import get_bot, main, parse_move, run_simulation
 from tictactoe.core import Move
 
 
@@ -31,6 +33,16 @@ def test_main_rejects_invalid_size():
     assert code == 2
 
 
+def test_get_bot_supports_mcts():
+    bot = get_bot("mcts")
+    assert bot.name == "mcts"
+
+
+def test_get_bot_rejects_unknown():
+    with pytest.raises(ValueError):
+        get_bot("unknown")
+
+
 def test_main_rejects_invalid_size_for_web():
     code = main(["web", "--size", "9"])
     assert code == 2
@@ -39,11 +51,26 @@ def test_main_rejects_invalid_size_for_web():
 def test_main_web_subcommand_runs(monkeypatch):
     called = {}
 
-    def fake_run(*, host, port, size, seed):
-        called["args"] = (host, port, size, seed)
+    def fake_run(*, host, port, size, seed, bot_name):
+        called["args"] = (host, port, size, seed, bot_name)
         return 0
 
     monkeypatch.setattr("tictactoe.cli.run_web_server", fake_run)
-    code = main(["web", "--host", "127.0.0.1", "--port", "9000", "--size", "10", "--seed", "2"])
+    code = main(
+        ["web", "--host", "127.0.0.1", "--port", "9000", "--size", "10", "--seed", "2", "--bot", "random"]
+    )
     assert code == 0
-    assert called["args"] == ("127.0.0.1", 9000, 10, 2)
+    assert called["args"] == ("127.0.0.1", 9000, 10, 2, "random")
+
+
+def test_main_web_subcommand_defaults_to_mcts(monkeypatch):
+    called = {}
+
+    def fake_run(*, host, port, size, seed, bot_name):
+        called["args"] = (host, port, size, seed, bot_name)
+        return 0
+
+    monkeypatch.setattr("tictactoe.cli.run_web_server", fake_run)
+    code = main(["web"])
+    assert code == 0
+    assert called["args"] == ("127.0.0.1", 8000, 15, None, "mcts")

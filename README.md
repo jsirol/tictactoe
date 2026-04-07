@@ -14,10 +14,10 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
 - Modes:
   - `play`: terminal UI (human vs bot)
   - `simulate`: headless bot vs bot simulation
-  - `web`: browser UI (human vs random bot)
+  - `web`: browser UI (human vs bot, default: MCTS)
 - Bot architecture:
   - Shared bot protocol/interface
-  - First bot implemented: `RandomBot` (seedable RNG support)
+  - Implemented bots: `RandomBot` and `MCTSBot` (seedable RNG support)
 - Browser UI:
   - Clickable grid board in the web page
   - `New Game` button to reset/start a match
@@ -49,7 +49,7 @@ Optional flags:
 
 - `--size <N>` board size (must be `>= 10`)
 - `--seed <INT>` deterministic bot randomness
-- `--bot random` currently supported bot
+- `--bot <random|mcts>` bot to play against
 
 Example:
 
@@ -81,9 +81,10 @@ Optional flags:
 - `--port <PORT>` server port (default: `8000`)
 - `--size <N>` default new-game board size (must be `>= 10`)
 - `--seed <INT>` optional deterministic seed for bot behavior
+- `--bot <random|mcts>` bot used in web games (default: `mcts`)
 
 Example:
 
 ```bash
-uv run tictactoe web --host 127.0.0.1 --port 8000 --size 15 --seed 42
+uv run tictactoe web --host 127.0.0.1 --port 8000 --size 15 --seed 42 --bot mcts
 ```

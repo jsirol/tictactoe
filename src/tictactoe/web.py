@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from .bots import RandomBot
+from .bots import Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
 
 SESSION_COOKIE = "ttt_session_id"
@@ -19,12 +19,13 @@ SESSION_COOKIE = "ttt_session_id"
 class SessionData:
     state: GameState
     rng: random.Random
-    bot: RandomBot
+    bot: Bot
 
 
 class NewGameRequest(BaseModel):
     size: int | None = None
     seed: int | None = None
+    bot: str | None = None
 
 
 class MoveRequest(BaseModel):
@@ -44,10 +45,18 @@ def _serialize_state(state: GameState) -> dict[str, Any]:
     }
 
 
-def _new_session(size: int, seed: int | None) -> SessionData:
+def _get_bot(name: str) -> Bot:
+    if name == "random":
+        return RandomBot()
+    if name == "mcts":
+        return MCTSBot()
+    raise ValueError(f"Unsupported bot: {name}")
+
+
+def _new_session(size: int, seed: int | None, bot_name: str) -> SessionData:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"Board size must be >= {MIN_BOARD_SIZE}")
-    return SessionData(state=GameState.new(size=size), rng=random.Random(seed), bot=RandomBot())
+    return SessionData(state=GameState.new(size=size), rng=random.Random(seed), bot=_get_bot(bot_name))
 
 
 def _ensure_session(request: Request) -> tuple[str, SessionData]:
@@ -57,16 +66,23 @@ def _ensure_session(request: Request) -> tuple[str, SessionData]:
         return sid, sessions[sid]
 
     sid = uuid.uuid4().hex
-    session = _new_session(request.app.state.default_size, request.app.state.default_seed)
+    session = _new_session(
+        request.app.state.default_size,
+        request.app.state.default_seed,
+        request.app.state.default_bot,
+    )
     sessions[sid] = session
     return sid, session
 
 
-def create_app(default_size: int = 15, default_seed: int | None = None) -> FastAPI:
+def create_app(
+    default_size: int = 15, default_seed: int | None = None, default_bot: str = "mcts"
+) -> FastAPI:
     app = FastAPI(title="Tic Tac Toe Web")
     app.state.sessions = {}
     app.state.default_size = default_size
     app.state.default_seed = default_seed
+    app.state.default_bot = default_bot
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -203,8 +219,9 @@ def create_app(default_size: int = 15, default_seed: int | None = None) -> FastA
     def new_game(request: Request, payload: NewGameRequest) -> JSONResponse:
         size = payload.size if payload.size is not None else request.app.state.default_size
         seed = payload.seed if payload.seed is not None else request.app.state.default_seed
+        bot_name = payload.bot if payload.bot is not None else request.app.state.default_bot
         try:
-            session = _new_session(size=size, seed=seed)
+            session = _new_session(size=size, seed=seed, bot_name=bot_name)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

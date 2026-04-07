@@ -6,7 +6,7 @@ from typing import Sequence
 
 import uvicorn
 
-from .bots import Bot, RandomBot
+from .bots import Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
 from .web import create_app
 
@@ -34,6 +34,8 @@ def render_board(state: GameState) -> str:
 def get_bot(name: str) -> Bot:
     if name == "random":
         return RandomBot()
+    if name == "mcts":
+        return MCTSBot()
     raise ValueError(f"Unsupported bot: {name}")
 
 
@@ -68,10 +70,12 @@ def run_simulation(size: int, games: int, seed: int | None = None) -> dict[str, 
     return result
 
 
-def run_web_server(host: str, port: int, size: int, seed: int | None = None) -> int:
+def run_web_server(
+    host: str, port: int, size: int, seed: int | None = None, bot_name: str = "mcts"
+) -> int:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
-    app = create_app(default_size=size, default_seed=seed)
+    app = create_app(default_size=size, default_seed=seed, default_bot=bot_name)
     uvicorn.run(app, host=host, port=port)
     return 0
 
@@ -111,10 +115,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tictactoe")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    play = subparsers.add_parser("play", help="Play human vs random bot in terminal UI")
+    play = subparsers.add_parser("play", help="Play human vs bot in terminal UI")
     play.add_argument("--size", type=int, default=15)
     play.add_argument("--seed", type=int, default=None)
-    play.add_argument("--bot", type=str, default="random")
+    play.add_argument("--bot", type=str, default="random", choices=["random", "mcts"])
 
     simulate = subparsers.add_parser("simulate", help="Run headless bot vs bot simulations")
     simulate.add_argument("--size", type=int, default=15)
@@ -126,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--port", type=int, default=8000)
     web.add_argument("--size", type=int, default=15)
     web.add_argument("--seed", type=int, default=None)
+    web.add_argument("--bot", type=str, default="mcts", choices=["random", "mcts"])
 
     return parser
 
@@ -142,7 +147,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"X wins: {result['X']}, O wins: {result['O']}, draws: {result['draw']}")
             return 0
         if args.command == "web":
-            return run_web_server(host=args.host, port=args.port, size=args.size, seed=args.seed)
+            return run_web_server(
+                host=args.host, port=args.port, size=args.size, seed=args.seed, bot_name=args.bot
+            )
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2

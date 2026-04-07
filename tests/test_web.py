@@ -33,7 +33,7 @@ def test_get_game_returns_same_session_game():
 
 
 def test_human_move_is_followed_by_bot_move_when_game_continues():
-    client = TestClient(create_app(default_size=10, default_seed=0))
+    client = TestClient(create_app(default_size=10, default_seed=0, default_bot="random"))
     client.post("/api/game/new", json={"size": 10, "seed": 0})
     response = client.post("/api/game/move", json={"row": 0, "col": 0})
     assert response.status_code == 200
@@ -45,7 +45,7 @@ def test_human_move_is_followed_by_bot_move_when_game_continues():
 
 
 def test_invalid_human_move_returns_400():
-    client = TestClient(create_app(default_size=10, default_seed=0))
+    client = TestClient(create_app(default_size=10, default_seed=0, default_bot="random"))
     client.post("/api/game/new", json={"size": 10, "seed": 0})
     response = client.post("/api/game/move", json={"row": 0, "col": 100})
     assert response.status_code == 400
@@ -55,4 +55,10 @@ def test_invalid_human_move_returns_400():
 def test_new_game_rejects_small_size():
     client = TestClient(create_app(default_size=10, default_seed=0))
     response = client.post("/api/game/new", json={"size": 9})
+    assert response.status_code == 400
+
+
+def test_new_game_rejects_unknown_bot():
+    client = TestClient(create_app(default_size=10, default_seed=0))
+    response = client.post("/api/game/new", json={"size": 10, "bot": "badbot"})
     assert response.status_code == 400

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -36,6 +37,28 @@ class HeuristicWeights:
     open_two_weight: float = 0.04
     open_three_weight: float = 0.12
     open_four_weight: float = 0.3
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, float]) -> "HeuristicWeights":
+        try:
+            return cls(
+                line_weight=float(raw["line_weight"]),
+                center_weight=float(raw["center_weight"]),
+                stone_weight=float(raw["stone_weight"]),
+                open_four_bonus=float(raw["open_four_bonus"]),
+                double_three_bonus=float(raw["double_three_bonus"]),
+                open_three_bonus=float(raw["open_three_bonus"]),
+                allow_opp_open_four_penalty=float(raw["allow_opp_open_four_penalty"]),
+                allow_opp_immediate_penalty=float(raw["allow_opp_immediate_penalty"]),
+                open_two_weight=float(raw["open_two_weight"]),
+                open_three_weight=float(raw["open_three_weight"]),
+                open_four_weight=float(raw["open_four_weight"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Invalid heuristic weights data") from exc
+
+    def to_dict(self) -> dict[str, float]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)

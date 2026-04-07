@@ -5,11 +5,20 @@ from collections import defaultdict
 
 from tictactoe.cli import get_bot
 from tictactoe.puzzles import load_puzzle_pack
+from tictactoe.bots import Bot
 
 
-def evaluate_pack(path: str, bot_name: str, seed: int | None) -> dict[str, object]:
+def evaluate_pack(
+    path: str,
+    bot_name: str,
+    seed: int | None,
+    *,
+    bot: Bot | None = None,
+    weights_file: str | None = None,
+) -> dict[str, object]:
     rng = random.Random(seed)
-    bot = get_bot(bot_name)
+    if bot is None:
+        bot = get_bot(bot_name, weights_file=weights_file)
     puzzles = load_puzzle_pack(path)
     solved = 0
     by_size: dict[int, list[bool]] = defaultdict(list)

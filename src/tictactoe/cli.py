@@ -8,6 +8,8 @@ import uvicorn
 
 from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
+from .search.value_model import HeuristicValueModel
+from .weight_store import load_best_weights_if_exists, load_weights_file
 from .web import create_app
 
 
@@ -31,13 +33,20 @@ def render_board(state: GameState) -> str:
     return "\n".join(rows)
 
 
-def get_bot(name: str) -> Bot:
+def get_bot(name: str, weights_file: str | None = None) -> Bot:
     if name == "random":
         return RandomBot()
     if name == "mcts":
         return MCTSBot()
     if name == "alphabeta":
-        return AlphaBetaBot()
+        weights = None
+        if weights_file:
+            weights = load_weights_file(weights_file)
+        else:
+            weights = load_best_weights_if_exists()
+        if weights is None:
+            return AlphaBetaBot()
+        return AlphaBetaBot(value_model=HeuristicValueModel(weights=weights))
     raise ValueError(f"Unsupported bot: {name}")
 
 
@@ -57,6 +66,7 @@ def run_simulation(
     seed: int | None = None,
     bot_x_name: str = "random",
     bot_o_name: str = "random",
+    weights_file: str | None = None,
 ) -> dict[str, int]:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
@@ -64,8 +74,8 @@ def run_simulation(
         raise ValueError("--games must be >= 1")
 
     rng = random.Random(seed)
-    bot_x = get_bot(bot_x_name)
-    bot_o = get_bot(bot_o_name)
+    bot_x = get_bot(bot_x_name, weights_file=weights_file)
+    bot_o = get_bot(bot_o_name, weights_file=weights_file)
     result = {"X": 0, "O": 0, "draw": 0}
     for _ in range(games):
         state = play_bot_vs_bot(size=size, bot_x=bot_x, bot_o=bot_o, rng=rng)
@@ -79,21 +89,30 @@ def run_simulation(
 
 
 def run_web_server(
-    host: str, port: int, size: int, seed: int | None = None, bot_name: str = "mcts"
+    host: str,
+    port: int,
+    size: int,
+    seed: int | None = None,
+    bot_name: str = "mcts",
+    weights_file: str | None = None,
 ) -> int:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
-    app = create_app(default_size=size, default_seed=seed, default_bot=bot_name)
+    app = create_app(
+        default_size=size, default_seed=seed, default_bot=bot_name, default_weights_file=weights_file
+    )
     uvicorn.run(app, host=host, port=port)
     return 0
 
 
-def run_play(size: int, seed: int | None = None, bot_name: str = "random") -> int:
+def run_play(
+    size: int, seed: int | None = None, bot_name: str = "random", weights_file: str | None = None
+) -> int:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
 
     rng = random.Random(seed)
-    bot = get_bot(bot_name)
+    bot = get_bot(bot_name, weights_file=weights_file)
     state = GameState.new(size=size)
 
     while not state.is_over:
@@ -127,6 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
     play.add_argument("--size", type=int, default=15)
     play.add_argument("--seed", type=int, default=None)
     play.add_argument("--bot", type=str, default="random", choices=["random", "mcts", "alphabeta"])
+    play.add_argument("--weights-file", type=str, default=None)
 
     simulate = subparsers.add_parser("simulate", help="Run headless bot vs bot simulations")
     simulate.add_argument("--size", type=int, default=15)
@@ -134,6 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
     simulate.add_argument("--seed", type=int, default=None)
     simulate.add_argument("--bot-x", type=str, default="random", choices=["random", "mcts", "alphabeta"])
     simulate.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts", "alphabeta"])
+    simulate.add_argument("--weights-file", type=str, default=None)
 
     web = subparsers.add_parser("web", help="Run browser-based UI")
     web.add_argument("--host", type=str, default="127.0.0.1")
@@ -141,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--size", type=int, default=15)
     web.add_argument("--seed", type=int, default=None)
     web.add_argument("--bot", type=str, default="mcts", choices=["random", "mcts", "alphabeta"])
+    web.add_argument("--weights-file", type=str, default=None)
 
     return parser
 
@@ -151,7 +173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "play":
-            return run_play(size=args.size, seed=args.seed, bot_name=args.bot)
+            return run_play(size=args.size, seed=args.seed, bot_name=args.bot, weights_file=args.weights_file)
         if args.command == "simulate":
             result = run_simulation(
                 size=args.size,
@@ -159,12 +181,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 seed=args.seed,
                 bot_x_name=args.bot_x,
                 bot_o_name=args.bot_o,
+                weights_file=args.weights_file,
             )
             print(f"X wins: {result['X']}, O wins: {result['O']}, draws: {result['draw']}")
             return 0
         if args.command == "web":
             return run_web_server(
-                host=args.host, port=args.port, size=args.size, seed=args.seed, bot_name=args.bot
+                host=args.host,
+                port=args.port,
+                size=args.size,
+                seed=args.seed,
+                bot_name=args.bot,
+                weights_file=args.weights_file,
             )
     except ValueError as exc:
         print(f"Error: {exc}")

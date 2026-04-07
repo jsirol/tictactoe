@@ -1,0 +1,91 @@
+{
+  "best_profile": {
+    "holdout_rate": 1.0,
+    "holdout_total": 3,
+    "profile_name": "base",
+    "tuning_rate": 1.0,
+    "tuning_total": 3,
+    "weights": {
+      "allow_opp_immediate_penalty": 0.9,
+      "allow_opp_open_four_penalty": 0.45,
+      "center_weight": 0.05,
+      "double_three_bonus": 0.25,
+      "line_weight": 0.35,
+      "open_four_bonus": 0.55,
+      "open_four_weight": 0.3,
+      "open_three_bonus": 0.08,
+      "open_three_weight": 0.12,
+      "open_two_weight": 0.04,
+      "stone_weight": 0.03
+    }
+  },
+  "candidates": [
+    {
+      "holdout_rate": 1.0,
+      "holdout_total": 3,
+      "profile_name": "base",
+      "tuning_rate": 1.0,
+      "tuning_total": 3,
+      "weights": {
+        "allow_opp_immediate_penalty": 0.9,
+        "allow_opp_open_four_penalty": 0.45,
+        "center_weight": 0.05,
+        "double_three_bonus": 0.25,
+        "line_weight": 0.35,
+        "open_four_bonus": 0.55,
+        "open_four_weight": 0.3,
+        "open_three_bonus": 0.08,
+        "open_three_weight": 0.12,
+        "open_two_weight": 0.04,
+        "stone_weight": 0.03
+      }
+    },
+    {
+      "holdout_rate": 1.0,
+      "holdout_total": 3,
+      "profile_name": "candidate_001",
+      "tuning_rate": 1.0,
+      "tuning_total": 3,
+      "weights": {
+        "allow_opp_immediate_penalty": 0.8309291247320919,
+        "allow_opp_open_four_penalty": 0.48055147225923983,
+        "center_weight": 0.058956549741187,
+        "double_three_bonus": 0.283549887812945,
+        "line_weight": 0.4138447980644949,
+        "open_four_bonus": 0.45867183893496283,
+        "open_four_weight": 0.30974448205344035,
+        "open_three_bonus": 0.08755103965019273,
+        "open_three_weight": 0.12512648321476022,
+        "open_two_weight": 0.0416951066508554,
+        "stone_weight": 0.024678616412721704
+      }
+    },
+    {
+      "holdout_rate": 1.0,
+      "holdout_total": 3,
+      "profile_name": "candidate_002",
+      "tuning_rate": 1.0,
+      "tuning_total": 3,
+      "weights": {
+        "allow_opp_immediate_penalty": 0.8801475079413072,
+        "allow_opp_open_four_penalty": 0.45795186853727776,
+        "center_weight": 0.04861339280582538,
+        "double_three_bonus": 0.29948195629497426,
+        "line_weight": 0.30217360183567277,
+        "open_four_bonus": 0.5990626578722426,
+        "open_four_weight": 0.24329338285089827,
+        "open_three_bonus": 0.0943806551389838,
+        "open_three_weight": 0.09772436781085715,
+        "open_two_weight": 0.03629185186638925,
+        "stone_weight": 0.028722381842464454
+      }
+    }
+  ],
+  "holdout_pack": "data/puzzles/holdout_15x15.jsonl",
+  "perturbation": 0.2,
+  "promoted_to_best": false,
+  "run_id": "20260407T161907Z",
+  "samples": 2,
+  "seed": 2,
+  "tuning_pack": "data/puzzles/tuning_10x10.jsonl"
+}

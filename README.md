@@ -62,6 +62,9 @@ Default alpha-beta search budget is tuned for stronger tactical play (`~800ms` p
 uv run python scripts/evaluate_puzzles.py --pack data/puzzles/tuning_10x10.jsonl --bot alphabeta --seed 1
 ```
 
+Optional:
+- `--weights-file <PATH>` load heuristic weights from registry/report/json file
+
 You can also include puzzle evaluation inside benchmark runs:
 
 ```bash
@@ -71,6 +74,21 @@ uv run python scripts/benchmark_bots.py --size 10 --games 2 --bot-x alphabeta --
 Current packs:
 - `data/puzzles/tuning_10x10.jsonl` for fast iteration
 - `data/puzzles/holdout_15x15.jsonl` for transfer/holdout validation
+
+### Tune heuristic weights
+
+```bash
+uv run python scripts/tune_weights.py --samples 20 --seed 1 --tuning-pack data/puzzles/tuning_10x10.jsonl --holdout-pack data/puzzles/holdout_15x15.jsonl
+```
+
+This writes:
+- per-run reports to `data/weights/runs/<run_id>.json`
+- canonical best profile to `data/weights/best.json` only when metrics improve
+
+Promotion rule:
+1. higher holdout solve-rate
+2. tie-break with tuning solve-rate
+3. tie-break with larger evaluated puzzle count
 
 ### Play in terminal UI (Human vs Bot)
 

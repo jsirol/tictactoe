@@ -10,9 +10,10 @@ def main() -> int:
     parser.add_argument("--pack", type=str, required=True)
     parser.add_argument("--bot", type=str, default="alphabeta", choices=["random", "mcts", "alphabeta"])
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--weights-file", type=str, default=None)
     args = parser.parse_args()
 
-    result = evaluate_pack(path=args.pack, bot_name=args.bot, seed=args.seed)
+    result = evaluate_pack(path=args.pack, bot_name=args.bot, seed=args.seed, weights_file=args.weights_file)
     print(
         f"Puzzle eval: pack={args.pack}, bot={args.bot}, solved={result['solved']}/{result['total']} "
         f"({result['solve_rate']:.2%})"

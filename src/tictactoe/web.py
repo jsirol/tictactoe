@@ -11,6 +11,8 @@ from pydantic import BaseModel
 
 from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
+from .search.value_model import HeuristicValueModel
+from .weight_store import load_best_weights_if_exists, load_weights_file
 
 SESSION_COOKIE = "ttt_session_id"
 
@@ -45,20 +47,33 @@ def _serialize_state(state: GameState) -> dict[str, Any]:
     }
 
 
-def _get_bot(name: str) -> Bot:
+def _get_bot(name: str, weights_file: str | None = None) -> Bot:
     if name == "random":
         return RandomBot()
     if name == "mcts":
         return MCTSBot()
     if name == "alphabeta":
-        return AlphaBetaBot()
+        weights = None
+        if weights_file:
+            weights = load_weights_file(weights_file)
+        else:
+            weights = load_best_weights_if_exists()
+        if weights is None:
+            return AlphaBetaBot()
+        return AlphaBetaBot(value_model=HeuristicValueModel(weights=weights))
     raise ValueError(f"Unsupported bot: {name}")
 
 
-def _new_session(size: int, seed: int | None, bot_name: str) -> SessionData:
+def _new_session(
+    size: int, seed: int | None, bot_name: str, weights_file: str | None = None
+) -> SessionData:
     if size < MIN_BOARD_SIZE:
         raise ValueError(f"Board size must be >= {MIN_BOARD_SIZE}")
-    return SessionData(state=GameState.new(size=size), rng=random.Random(seed), bot=_get_bot(bot_name))
+    return SessionData(
+        state=GameState.new(size=size),
+        rng=random.Random(seed),
+        bot=_get_bot(bot_name, weights_file=weights_file),
+    )
 
 
 def _ensure_session(request: Request) -> tuple[str, SessionData]:
@@ -72,19 +87,24 @@ def _ensure_session(request: Request) -> tuple[str, SessionData]:
         request.app.state.default_size,
         request.app.state.default_seed,
         request.app.state.default_bot,
+        request.app.state.default_weights_file,
     )
     sessions[sid] = session
     return sid, session
 
 
 def create_app(
-    default_size: int = 15, default_seed: int | None = None, default_bot: str = "mcts"
+    default_size: int = 15,
+    default_seed: int | None = None,
+    default_bot: str = "mcts",
+    default_weights_file: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Tic Tac Toe Web")
     app.state.sessions = {}
     app.state.default_size = default_size
     app.state.default_seed = default_seed
     app.state.default_bot = default_bot
+    app.state.default_weights_file = default_weights_file
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -223,7 +243,12 @@ def create_app(
         seed = payload.seed if payload.seed is not None else request.app.state.default_seed
         bot_name = payload.bot if payload.bot is not None else request.app.state.default_bot
         try:
-            session = _new_session(size=size, seed=seed, bot_name=bot_name)
+            session = _new_session(
+                size=size,
+                seed=seed,
+                bot_name=bot_name,
+                weights_file=request.app.state.default_weights_file,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

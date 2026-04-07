@@ -20,15 +20,16 @@ from tictactoe.search.value_model import HeuristicValueModel
 class InferenceRequest:
     request_id: int
     worker_id: int
-    state: GameState
-    symbol: Symbol
-    candidates: list[Move]
+    encoded_planes: list[list[list[float]]]
+    candidate_indices: list[int]
+    board_size: int
 
 
 @dataclass(frozen=True)
 class InferenceResponse:
     request_id: int
-    priors: dict[Move, float]
+    candidate_indices: list[int]
+    probabilities: list[float]
     value: float
 
 
@@ -65,19 +66,27 @@ class QueuePolicyValueClient:
     def predict(
         self, state: GameState, symbol: Symbol, candidate_moves: list[Move]
     ) -> tuple[dict[Move, float], float]:
+        board_size = state.board.size
+        encoded_planes = _encode_planes(state, symbol)
+        candidate_indices = [move.row * board_size + move.col for move in candidate_moves]
         request = InferenceRequest(
             request_id=self._next_request_id,
             worker_id=self._worker_id,
-            state=state.fast_clone(),
-            symbol=symbol,
-            candidates=list(candidate_moves),
+            encoded_planes=encoded_planes,
+            candidate_indices=candidate_indices,
+            board_size=board_size,
         )
         self._next_request_id += 1
         self._request_queue.put(request)
         while True:
             response = self._response_queue.get()
             if response.request_id == request.request_id:
-                return response.priors, response.value
+                priors: dict[Move, float] = {}
+                for idx, flat in enumerate(response.candidate_indices):
+                    row = flat // board_size
+                    col = flat % board_size
+                    priors[Move(row, col)] = float(response.probabilities[idx])
+                return priors, response.value
 
     def predict_batch(
         self, items: list[tuple[GameState, Symbol, list[Move]]]
@@ -257,6 +266,8 @@ def _batcher_main(
     worker_response_queues: list[mp.Queue[InferenceResponse]],
 ) -> None:
     model = _load_policy_value_model(config.model_path)
+    if isinstance(model, TorchPolicyValueModel):
+        model.configure_threads(intraop_threads=1, interop_threads=1)
     while True:
         batch: list[InferenceRequest] = []
         try:
@@ -270,12 +281,43 @@ def _batcher_main(
                 batch.append(request_queue.get_nowait())
             except queue.Empty:
                 break
-        items = [(req.state, req.symbol, req.candidates) for req in batch]
-        outputs = model.predict_batch(items)
-        for req, (priors, value) in zip(batch, outputs):
-            worker_response_queues[req.worker_id].put(
-                InferenceResponse(request_id=req.request_id, priors=priors, value=value)
-            )
+        if isinstance(model, TorchPolicyValueModel):
+            encoded = [req.encoded_planes for req in batch]
+            candidate_indices_batch = [req.candidate_indices for req in batch]
+            outputs = model.predict_encoded_batch(encoded, candidate_indices_batch)
+            for req, (probs, value) in zip(batch, outputs):
+                worker_response_queues[req.worker_id].put(
+                    InferenceResponse(
+                        request_id=req.request_id,
+                        candidate_indices=req.candidate_indices,
+                        probabilities=probs,
+                        value=value,
+                    )
+                )
+        else:
+            items = [
+                (
+                    _decode_state(req.encoded_planes, req.board_size),
+                    Symbol.X if req.encoded_planes[2][0][0] >= 0.5 else Symbol.O,
+                    [Move(flat // req.board_size, flat % req.board_size) for flat in req.candidate_indices],
+                )
+                for req in batch
+            ]
+            outputs = model.predict_batch(items)
+            for req, (priors, value) in zip(batch, outputs):
+                indices: list[int] = []
+                probs: list[float] = []
+                for move, prob in priors.items():
+                    indices.append(move.row * req.board_size + move.col)
+                    probs.append(float(prob))
+                worker_response_queues[req.worker_id].put(
+                    InferenceResponse(
+                        request_id=req.request_id,
+                        candidate_indices=indices,
+                        probabilities=probs,
+                        value=value,
+                    )
+                )
 
 
 def _writer_main(output_dir: str, writer_queue: mp.Queue[dict], done_queue: mp.Queue[dict]) -> None:
@@ -321,3 +363,33 @@ def _encode_obs(state: GameState, perspective: Symbol) -> dict:
             elif cell is Symbol.O:
                 o[row][col] = 1
     return {"x": x, "o": o, "to_move": perspective.value}
+
+
+def _encode_planes(state: GameState, perspective: Symbol) -> list[list[list[float]]]:
+    size = state.board.size
+    x = [[0.0 for _ in range(size)] for _ in range(size)]
+    o = [[0.0 for _ in range(size)] for _ in range(size)]
+    stm_value = 1.0 if perspective is Symbol.X else 0.0
+    stm = [[stm_value for _ in range(size)] for _ in range(size)]
+    for row in range(size):
+        for col in range(size):
+            cell = state.board.cells[row][col]
+            if cell is Symbol.X:
+                x[row][col] = 1.0
+            elif cell is Symbol.O:
+                o[row][col] = 1.0
+    return [x, o, stm]
+
+
+def _decode_state(encoded_planes: list[list[list[float]]], board_size: int) -> GameState:
+    state = GameState.new(size=board_size)
+    x_plane = encoded_planes[0]
+    o_plane = encoded_planes[1]
+    for row in range(board_size):
+        for col in range(board_size):
+            if x_plane[row][col] >= 0.5:
+                state.board.place(Symbol.X, Move(row, col))
+            elif o_plane[row][col] >= 0.5:
+                state.board.place(Symbol.O, Move(row, col))
+    state.next_symbol = Symbol.X if encoded_planes[2][0][0] >= 0.5 else Symbol.O
+    return state

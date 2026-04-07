@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from tictactoe.core import GameState, Move, Symbol
@@ -24,7 +24,7 @@ class ValueModel(Protocol):
 
 
 @dataclass(frozen=True)
-class HeuristicValueModel:
+class HeuristicWeights:
     line_weight: float = 0.35
     center_weight: float = 0.05
     stone_weight: float = 0.03
@@ -36,6 +36,11 @@ class HeuristicValueModel:
     open_two_weight: float = 0.04
     open_three_weight: float = 0.12
     open_four_weight: float = 0.3
+
+
+@dataclass(frozen=True)
+class HeuristicValueModel:
+    weights: HeuristicWeights = field(default_factory=HeuristicWeights)
 
     def evaluate(self, state: GameState, for_symbol: Symbol) -> float:
         if state.winner is for_symbol:
@@ -59,17 +64,17 @@ class HeuristicValueModel:
             if threat.kind is ThreatKind.IMMEDIATE_WIN:
                 return 1.0
             if threat.kind is ThreatKind.OPEN_FOUR:
-                score += self.open_four_bonus
+                score += self.weights.open_four_bonus
             elif threat.kind is ThreatKind.DOUBLE_THREE:
-                score += self.double_three_bonus
+                score += self.weights.double_three_bonus
             elif threat.kind is ThreatKind.OPEN_THREE:
-                score += self.open_three_bonus
+                score += self.weights.open_three_bonus
 
         opponent_threats = detect_threats(trial, symbol.other())
         if any(threat.kind is ThreatKind.IMMEDIATE_WIN for threat in opponent_threats):
-            score -= self.allow_opp_immediate_penalty
+            score -= self.weights.allow_opp_immediate_penalty
         elif any(threat.kind is ThreatKind.OPEN_FOUR for threat in opponent_threats):
-            score -= self.allow_opp_open_four_penalty
+            score -= self.weights.allow_opp_open_four_penalty
         return max(-1.0, min(1.0, score))
 
     def score_moves(
@@ -110,19 +115,19 @@ class HeuristicValueModel:
         open_four = 0.0
         for threat in detect_threats(state, symbol):
             if threat.kind is ThreatKind.OPEN_THREE:
-                open_three += self.open_three_weight
+                open_three += self.weights.open_three_weight
             elif threat.kind is ThreatKind.DOUBLE_THREE:
-                open_three += self.open_three_weight * 2
+                open_three += self.weights.open_three_weight * 2
             elif threat.kind is ThreatKind.OPEN_FOUR:
-                open_four += self.open_four_weight
+                open_four += self.weights.open_four_weight
             elif threat.kind is ThreatKind.IMMEDIATE_WIN:
-                open_four += self.open_four_weight * 2
+                open_four += self.weights.open_four_weight * 2
         # Lightweight proxy for open two pressure from local line potential.
-        open_two = max(0.0, (line_term - 0.1)) * self.open_two_weight
+        open_two = max(0.0, (line_term - 0.1)) * self.weights.open_two_weight
 
-        line_score = self.line_weight * line_term
-        center_score = self.center_weight * normalized_center
-        stone_score = self.stone_weight * stone_term
+        line_score = self.weights.line_weight * line_term
+        center_score = self.weights.center_weight * normalized_center
+        stone_score = self.weights.stone_weight * stone_term
         total = line_score + center_score + stone_score + open_two + open_three + open_four
         return {
             "line": line_score,

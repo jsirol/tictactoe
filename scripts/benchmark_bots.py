@@ -5,6 +5,7 @@ import random
 import time
 
 from tictactoe.cli import get_bot, play_bot_vs_bot
+from tictactoe.puzzle_eval import evaluate_pack
 
 
 def run_benchmark(size: int, games: int, bot_x_name: str, bot_o_name: str, seed: int | None) -> None:
@@ -48,11 +49,28 @@ def main() -> int:
     parser.add_argument("--bot-x", type=str, default="mcts", choices=["random", "mcts", "alphabeta"])
     parser.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts", "alphabeta"])
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--puzzle-pack", type=str, default=None)
+    parser.add_argument("--puzzle-bot", type=str, default=None, choices=["random", "mcts", "alphabeta"])
     args = parser.parse_args()
 
     run_benchmark(
         size=args.size, games=args.games, bot_x_name=args.bot_x, bot_o_name=args.bot_o, seed=args.seed
     )
+    if args.puzzle_pack:
+        puzzle_bot = args.puzzle_bot or args.bot_x
+        result = evaluate_pack(path=args.puzzle_pack, bot_name=puzzle_bot, seed=args.seed)
+        print(
+            f"Puzzle eval: pack={args.puzzle_pack}, bot={puzzle_bot}, "
+            f"solved={result['solved']}/{result['total']} ({result['solve_rate']:.2%})"
+        )
+        print("Puzzle by size:")
+        for size, stats in result["by_size"].items():
+            solved, total, rate = stats
+            print(f"  {size}x{size}: {solved}/{total} ({rate:.2%})")
+        print("Puzzle by kind:")
+        for kind, stats in result["by_kind"].items():
+            solved, total, rate = stats
+            print(f"  {kind}: {solved}/{total} ({rate:.2%})")
     return 0
 
 

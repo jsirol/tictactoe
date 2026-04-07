@@ -12,7 +12,7 @@ from tictactoe.search.tactics import (
     find_immediate_winning_move,
 )
 from tictactoe.search.threat_solver import solve_forcing_line
-from tictactoe.search.value_model import HeuristicValueModel
+from tictactoe.search.value_model import HeuristicValueModel, HeuristicWeights
 
 
 def test_candidate_moves_prefers_local_frontier():
@@ -193,3 +193,11 @@ def test_value_model_explain_features_contains_total():
     model = HeuristicValueModel()
     features = model.explain_features(state, Symbol.X)
     assert "total" in features
+
+
+def test_value_model_accepts_custom_weight_profile():
+    model = HeuristicValueModel(weights=HeuristicWeights(line_weight=0.5))
+    state = GameState.new(size=10)
+    state.board.place(Symbol.X, Move(5, 5))
+    features = model.explain_features(state, Symbol.X)
+    assert features["line"] >= 0.0

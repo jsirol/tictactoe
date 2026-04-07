@@ -30,6 +30,7 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
   - Current game state shown (turn/winner/draw)
 - Test suite with `pytest` for core game logic, bots, CLI/web behavior, search modules, and seeded bot-strength regression checks
 - Local benchmark script for bot performance comparisons
+ - Puzzle-pack loader and tactical solve-rate evaluation workflow
 
 ## Requirements
 
@@ -54,6 +55,22 @@ uv run python scripts/benchmark_bots.py --size 15 --games 10 --bot-x alphabeta -
 
 For alpha-beta bots, benchmark output also includes search stats (`depth`, `nodes`, `tt_hits`, `cutoffs`).
 Default alpha-beta search budget is tuned for stronger tactical play (`~800ms` per move).
+
+### Evaluate tactical puzzle packs
+
+```bash
+uv run python scripts/evaluate_puzzles.py --pack data/puzzles/tuning_10x10.jsonl --bot alphabeta --seed 1
+```
+
+You can also include puzzle evaluation inside benchmark runs:
+
+```bash
+uv run python scripts/benchmark_bots.py --size 10 --games 2 --bot-x alphabeta --bot-o mcts --seed 1 --puzzle-pack data/puzzles/holdout_15x15.jsonl
+```
+
+Current packs:
+- `data/puzzles/tuning_10x10.jsonl` for fast iteration
+- `data/puzzles/holdout_15x15.jsonl` for transfer/holdout validation
 
 ### Play in terminal UI (Human vs Bot)
 

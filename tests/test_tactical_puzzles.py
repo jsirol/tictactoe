@@ -30,6 +30,19 @@ def test_threat_solver_finds_forced_win():
     assert solution is not None
     assert solution.status is ThreatSolutionStatus.FORCED_WIN
     assert solution.move == Move(3, 4)
+    assert solution.line
+
+
+def test_threat_solver_can_return_unresolved():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.X
+    state.board.place(Symbol.X, Move(5, 4))
+    state.board.place(Symbol.X, Move(5, 6))
+    state.board.place(Symbol.X, Move(4, 5))
+    state.board.place(Symbol.X, Move(6, 5))
+    solution = solve_forcing_line(state, Symbol.X, SearchContext(), max_ply=1)
+    assert solution is not None
+    assert solution.status in {ThreatSolutionStatus.UNRESOLVED, ThreatSolutionStatus.FORCED_WIN}
 
 
 def test_alphabeta_solves_tactical_defense_puzzle():

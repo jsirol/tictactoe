@@ -14,7 +14,7 @@ def main() -> int:
     parser.add_argument("--checkpoint-every", type=int, default=5)
     parser.add_argument("--no-warmstart-from-latest", action="store_true")
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--initial-model-path", type=str, default=None)
+    parser.add_argument("--initial-model-path", type=str, default="data/models/latest.torchscript.pt")
 
     parser.add_argument("--selfplay-output-dir", type=str, default="data/selfplay")
     parser.add_argument("--models-dir", type=str, default="data/models/loops")

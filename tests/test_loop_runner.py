@@ -55,7 +55,7 @@ def test_loop_runner_tracks_best_and_checkpoints(tmp_path, monkeypatch):
         logger=lambda _: None,
     )
     base = tmp_path / "models" / "testloop"
-    assert summary["best_iteration"] == 4
+    assert summary["best_iteration"] == 5
     assert Path(summary["best_model"]).exists()
     assert Path(summary["latest_model"]).exists()
     assert Path(summary["final_model"]).exists()

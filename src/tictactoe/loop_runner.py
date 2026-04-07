@@ -61,7 +61,7 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
     best_model_path = base_dir / "best.torchscript.pt"
     final_model_path = base_dir / "final.torchscript.pt"
 
-    best_loss = float("inf")
+    best_loss = float("nan")
     best_iteration = 0
     current_model_path = config.initial_model_path
     loop_start = time.perf_counter()
@@ -140,12 +140,12 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
             shutil.copy2(iter_meta, latest_meta_path)
             current_model_path = str(latest_model_path)
 
-            if total_loss < best_loss:
-                best_loss = total_loss
-                best_iteration = iteration
-                shutil.copy2(iter_torchscript, best_model_path)
-                shutil.copy2(iter_meta, best_meta_path)
-                logger(f"  new best model at iteration {iteration} (loss={best_loss:.6f})")
+            # Promotion rule: latest model is always canonical "best" for online training loops.
+            best_loss = total_loss
+            best_iteration = iteration
+            shutil.copy2(iter_torchscript, best_model_path)
+            shutil.copy2(iter_meta, best_meta_path)
+            logger(f"  promoted latest model at iteration {iteration} (loss={best_loss:.6f})")
 
             if iteration % config.checkpoint_every == 0:
                 checkpoint_base = checkpoints_dir / f"iter_{iteration:03d}"

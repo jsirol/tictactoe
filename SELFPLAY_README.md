@@ -172,7 +172,7 @@ uv run python scripts/run_selfplay_train_loop.py \
 
 Outputs under `data/models/loops/<run_name>/`:
 - `latest.torchscript.pt`
-- `best.torchscript.pt` (lowest training total loss)
+- `best.torchscript.pt` (promoted latest model alias)
 - `final.torchscript.pt`
 - `checkpoints/iter_XXX.*` every `--checkpoint-every`
 - `loop_history.jsonl` with per-iteration metrics

@@ -6,7 +6,7 @@ from typing import Sequence
 
 import uvicorn
 
-from .bots import Bot, MCTSBot, RandomBot
+from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
 from .web import create_app
 
@@ -36,6 +36,8 @@ def get_bot(name: str) -> Bot:
         return RandomBot()
     if name == "mcts":
         return MCTSBot()
+    if name == "alphabeta":
+        return AlphaBetaBot()
     raise ValueError(f"Unsupported bot: {name}")
 
 
@@ -124,21 +126,21 @@ def build_parser() -> argparse.ArgumentParser:
     play = subparsers.add_parser("play", help="Play human vs bot in terminal UI")
     play.add_argument("--size", type=int, default=15)
     play.add_argument("--seed", type=int, default=None)
-    play.add_argument("--bot", type=str, default="random", choices=["random", "mcts"])
+    play.add_argument("--bot", type=str, default="random", choices=["random", "mcts", "alphabeta"])
 
     simulate = subparsers.add_parser("simulate", help="Run headless bot vs bot simulations")
     simulate.add_argument("--size", type=int, default=15)
     simulate.add_argument("--games", type=int, default=1)
     simulate.add_argument("--seed", type=int, default=None)
-    simulate.add_argument("--bot-x", type=str, default="random", choices=["random", "mcts"])
-    simulate.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts"])
+    simulate.add_argument("--bot-x", type=str, default="random", choices=["random", "mcts", "alphabeta"])
+    simulate.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts", "alphabeta"])
 
     web = subparsers.add_parser("web", help="Run browser-based UI")
     web.add_argument("--host", type=str, default="127.0.0.1")
     web.add_argument("--port", type=int, default=8000)
     web.add_argument("--size", type=int, default=15)
     web.add_argument("--seed", type=int, default=None)
-    web.add_argument("--bot", type=str, default="mcts", choices=["random", "mcts"])
+    web.add_argument("--bot", type=str, default="mcts", choices=["random", "mcts", "alphabeta"])
 
     return parser
 

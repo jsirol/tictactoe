@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tictactoe.bots import MCTSBot, RandomBot
+from tictactoe.bots import AlphaBetaBot, MCTSBot, RandomBot
 from tictactoe.core import GameState, Move, Symbol
 
 
@@ -112,3 +112,42 @@ def test_mcts_prioritizes_open_four_over_blocking_opponent_double_three():
 
     bot = MCTSBot(simulations=20)
     assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(13)) == Move(2, 4)
+
+
+def test_alphabeta_bot_returns_legal_move():
+    state = GameState.new(size=10)
+    state.apply_move(Move(0, 0))
+    bot = AlphaBetaBot(time_budget_ms=30, max_depth=2)
+    move = bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(1))
+    assert move in state.board.legal_moves()
+
+
+def test_alphabeta_bot_is_deterministic_with_same_seed():
+    state = GameState.new(size=10)
+    state.apply_move(Move(0, 0))
+    bot = AlphaBetaBot(time_budget_ms=10_000, max_depth=2)
+    rng_a = random.Random(99)
+    rng_b = random.Random(99)
+    assert bot.choose_move(state, Symbol.O, rng_a) == bot.choose_move(state, Symbol.O, rng_b)
+
+
+def test_alphabeta_bot_prefers_immediate_winning_move():
+    state = GameState.new(size=10)
+    state.board.place(Symbol.O, Move(2, 0))
+    state.board.place(Symbol.O, Move(2, 1))
+    state.board.place(Symbol.O, Move(2, 2))
+    state.board.place(Symbol.O, Move(2, 3))
+    state.next_symbol = Symbol.O
+    bot = AlphaBetaBot(time_budget_ms=30, max_depth=2)
+    assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(5)) == Move(2, 4)
+
+
+def test_alphabeta_bot_blocks_immediate_win():
+    state = GameState.new(size=10)
+    state.next_symbol = Symbol.O
+    state.board.place(Symbol.X, Move(1, 1))
+    state.board.place(Symbol.X, Move(1, 2))
+    state.board.place(Symbol.X, Move(1, 3))
+    state.board.place(Symbol.X, Move(1, 4))
+    bot = AlphaBetaBot(time_budget_ms=30, max_depth=2)
+    assert bot.choose_move(state=state, symbol=Symbol.O, rng=random.Random(2)) in {Move(1, 0), Move(1, 5)}

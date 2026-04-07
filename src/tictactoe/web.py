@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from .bots import Bot, MCTSBot, RandomBot
+from .bots import AlphaBetaBot, Bot, MCTSBot, RandomBot
 from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
 
 SESSION_COOKIE = "ttt_session_id"
@@ -50,6 +50,8 @@ def _get_bot(name: str) -> Bot:
         return RandomBot()
     if name == "mcts":
         return MCTSBot()
+    if name == "alphabeta":
+        return AlphaBetaBot()
     raise ValueError(f"Unsupported bot: {name}")
 
 

@@ -33,8 +33,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, default=15)
     parser.add_argument("--games", type=int, default=10)
-    parser.add_argument("--bot-x", type=str, default="mcts", choices=["random", "mcts"])
-    parser.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts"])
+    parser.add_argument("--bot-x", type=str, default="mcts", choices=["random", "mcts", "alphabeta"])
+    parser.add_argument("--bot-o", type=str, default="random", choices=["random", "mcts", "alphabeta"])
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 

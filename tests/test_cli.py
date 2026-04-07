@@ -58,6 +58,11 @@ def test_get_bot_supports_mcts():
     assert bot.name == "mcts"
 
 
+def test_get_bot_supports_alphabeta():
+    bot = get_bot("alphabeta")
+    assert bot.name == "alphabeta"
+
+
 def test_get_bot_rejects_unknown():
     with pytest.raises(ValueError):
         get_bot("unknown")

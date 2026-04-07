@@ -62,3 +62,9 @@ def test_new_game_rejects_unknown_bot():
     client = TestClient(create_app(default_size=10, default_seed=0))
     response = client.post("/api/game/new", json={"size": 10, "bot": "badbot"})
     assert response.status_code == 400
+
+
+def test_new_game_accepts_alphabeta_bot():
+    client = TestClient(create_app(default_size=10, default_seed=0))
+    response = client.post("/api/game/new", json={"size": 10, "bot": "alphabeta"})
+    assert response.status_code == 200

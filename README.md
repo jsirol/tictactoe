@@ -17,7 +17,7 @@ Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
   - `web`: browser UI (human vs bot, default: MCTS)
 - Bot architecture:
   - Shared bot protocol/interface
-  - Implemented bots: `RandomBot` and `MCTSBot` (seedable RNG support)
+  - Implemented bots: `RandomBot`, `MCTSBot`, and `AlphaBetaBot` (seedable RNG support)
   - Reusable search modules for stronger bots:
     - frontier move policy
     - tactical immediate win/block checks
@@ -47,7 +47,7 @@ uv run --extra dev pytest
 ### Run benchmark
 
 ```bash
-uv run python scripts/benchmark_bots.py --size 15 --games 10 --bot-x mcts --bot-o random --seed 42
+uv run python scripts/benchmark_bots.py --size 15 --games 10 --bot-x alphabeta --bot-o mcts --seed 42
 ```
 
 ### Play in terminal UI (Human vs Bot)
@@ -60,7 +60,7 @@ Optional flags:
 
 - `--size <N>` board size (must be `>= 10`)
 - `--seed <INT>` deterministic bot randomness
-- `--bot <random|mcts>` bot to play against
+- `--bot <random|mcts|alphabeta>` bot to play against
 
 Example:
 
@@ -80,13 +80,13 @@ Outputs total `X` wins, `O` wins, and draws.
 
 Optional flags:
 
-- `--bot-x <random|mcts>` bot playing as X (default: `random`)
-- `--bot-o <random|mcts>` bot playing as O (default: `random`)
+- `--bot-x <random|mcts|alphabeta>` bot playing as X (default: `random`)
+- `--bot-o <random|mcts|alphabeta>` bot playing as O (default: `random`)
 
 Example with different bots:
 
 ```bash
-uv run tictactoe simulate --size 15 --games 50 --seed 42 --bot-x mcts --bot-o random
+uv run tictactoe simulate --size 15 --games 50 --seed 42 --bot-x alphabeta --bot-o mcts
 ```
 
 ### Run browser UI
@@ -103,7 +103,7 @@ Optional flags:
 - `--port <PORT>` server port (default: `8000`)
 - `--size <N>` default new-game board size (must be `>= 10`)
 - `--seed <INT>` optional deterministic seed for bot behavior
-- `--bot <random|mcts>` bot used in web games (default: `mcts`)
+- `--bot <random|mcts|alphabeta>` bot used in web games (default: `mcts`)
 
 Example:
 

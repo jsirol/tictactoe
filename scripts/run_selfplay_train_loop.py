@@ -32,6 +32,7 @@ def main() -> int:
 
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--train-batch-size", type=int, default=128)
+    parser.add_argument("--replay-shards", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--train-log-every-steps", type=int, default=20)
@@ -64,6 +65,7 @@ def main() -> int:
             temperature_cutoff_ply=args.temperature_cutoff_ply,
             train_epochs=args.epochs,
             train_batch_size=args.train_batch_size,
+            replay_shards=args.replay_shards,
             lr=args.lr,
             weight_decay=args.weight_decay,
             train_log_every_steps=args.train_log_every_steps,

@@ -161,6 +161,9 @@ Train from the latest self-play manifest:
 uv run python scripts/train_policy_value.py --data-manifest data/selfplay/manifest.json --epochs 5 --batch-size 128 --out-dir data/models
 ```
 
+By default this mixes replay from the latest 3 self-play shards (`--replay-shards 3`).
+Set `--replay-shards 1` to train only from the manifest shard.
+
 This creates:
 - `<run_name>.pt` (training checkpoint)
 - `<run_name>.torchscript.pt` (inference artifact for `--model-path`)

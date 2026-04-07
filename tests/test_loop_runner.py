@@ -24,6 +24,7 @@ def test_loop_runner_tracks_best_and_checkpoints(tmp_path, monkeypatch):
 
     def fake_training(config, logger=print):
         init_paths.append(config.init_checkpoint_path)
+        assert config.replay_shards == 3
         out_dir = Path(config.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         loss = next(losses)

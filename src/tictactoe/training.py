@@ -24,16 +24,21 @@ class SampleRecord:
 
 @dataclass(frozen=True)
 class DataSource:
-    train_path: Path
+    train_paths: list[Path]
     manifest_path: Path | None
     manifest_games: int | None
     manifest_samples: int | None
+
+    @property
+    def train_path(self) -> Path:
+        return self.train_paths[0]
 
 
 @dataclass(frozen=True)
 class TrainingConfig:
     data_manifest: str = "data/selfplay/manifest.json"
     train_file: str | None = None
+    replay_shards: int = 3
     out_dir: str = "data/models"
     run_name: str = "pv_run"
     epochs: int = 5
@@ -51,16 +56,18 @@ def run_training(config: TrainingConfig, logger: Callable[[str], None] = print) 
     torch, nn, F = _import_torch()
     logger("[1/5] Resolving data source")
     source = resolve_data_source(config)
-    logger(f"  train_file={source.train_path}")
+    logger(f"  train_files={len(source.train_paths)}")
+    for path in source.train_paths:
+        logger(f"    - {path}")
     if source.manifest_path is not None:
         logger(
             f"  manifest={source.manifest_path}, games={source.manifest_games}, samples={source.manifest_samples}"
         )
 
     logger("[2/5] Loading and validating samples")
-    samples = load_samples(source.train_path)
+    samples = load_samples_from_paths(source.train_paths)
     if not samples:
-        raise ValueError(f"No training samples found in {source.train_path}")
+        raise ValueError(f"No training samples found in {source.train_paths}")
     board_size = len(samples[0].obs_x)
     versions = Counter(sample.model_version for sample in samples)
     unique_games = len({sample.game_id for sample in samples})
@@ -153,7 +160,7 @@ def run_training(config: TrainingConfig, logger: Callable[[str], None] = print) 
                 "init_checkpoint_path": config.init_checkpoint_path,
             },
             "source": {
-                "train_path": str(source.train_path),
+                "train_paths": [str(path) for path in source.train_paths],
                 "manifest_path": None if source.manifest_path is None else str(source.manifest_path),
                 "manifest_games": source.manifest_games,
                 "manifest_samples": source.manifest_samples,
@@ -178,7 +185,7 @@ def run_training(config: TrainingConfig, logger: Callable[[str], None] = print) 
             "torchscript": str(torchscript_path),
         },
         "source": {
-            "train_path": str(source.train_path),
+            "train_paths": [str(path) for path in source.train_paths],
             "manifest_path": None if source.manifest_path is None else str(source.manifest_path),
             "manifest_games": source.manifest_games,
             "manifest_samples": source.manifest_samples,
@@ -198,7 +205,7 @@ def resolve_data_source(config: TrainingConfig) -> DataSource:
         path = Path(config.train_file)
         if not path.exists():
             raise FileNotFoundError(f"Train file does not exist: {path}")
-        return DataSource(train_path=path, manifest_path=None, manifest_games=None, manifest_samples=None)
+        return DataSource(train_paths=[path], manifest_path=None, manifest_games=None, manifest_samples=None)
 
     manifest_path = Path(config.data_manifest)
     if not manifest_path.exists():
@@ -210,8 +217,9 @@ def resolve_data_source(config: TrainingConfig) -> DataSource:
     train_path = Path(raw["path"])
     if not train_path.exists():
         raise FileNotFoundError(f"Train file from manifest does not exist: {train_path}")
+    train_paths = _resolve_replay_paths(train_path=train_path, replay_shards=config.replay_shards)
     return DataSource(
-        train_path=train_path,
+        train_paths=train_paths,
         manifest_path=manifest_path,
         manifest_games=int(raw.get("games", 0)),
         manifest_samples=int(raw.get("samples", 0)),
@@ -230,6 +238,31 @@ def load_samples(path: Path) -> list[SampleRecord]:
                 continue
             samples.append(_parse_sample(raw, line_no=line_no))
     return samples
+
+
+def load_samples_from_paths(paths: list[Path]) -> list[SampleRecord]:
+    samples: list[SampleRecord] = []
+    for path in paths:
+        samples.extend(load_samples(path))
+    return samples
+
+
+def _resolve_replay_paths(train_path: Path, replay_shards: int) -> list[Path]:
+    if replay_shards <= 1:
+        return [train_path]
+    parent = train_path.parent
+    candidates = sorted(parent.glob("selfplay_*.jsonl"))
+    if not candidates:
+        return [train_path]
+    if train_path not in candidates:
+        candidates.append(train_path)
+        candidates = sorted(candidates)
+    picked = candidates[-max(1, replay_shards) :]
+    dedup: list[Path] = []
+    for path in picked:
+        if path not in dedup:
+            dedup.append(path)
+    return dedup
 
 
 def _parse_sample(raw: dict, line_no: int) -> SampleRecord:

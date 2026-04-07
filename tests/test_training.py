@@ -59,8 +59,26 @@ def test_resolve_data_source_uses_manifest_path(tmp_path: Path):
     )
     source = resolve_data_source(TrainingConfig(data_manifest=str(manifest), run_name="x"))
     assert source.train_path == train_file
+    assert source.train_paths == [train_file]
     assert source.manifest_games == 1
     assert source.manifest_samples == 1
+
+
+def test_resolve_data_source_replay_mixing_picks_latest_shards(tmp_path: Path):
+    paths: list[Path] = []
+    for idx in range(5):
+        path = tmp_path / f"selfplay_{1000+idx}.jsonl"
+        path.write_text(json.dumps(_sample_line(game_id=f"g{idx}")) + "\n", encoding="utf-8")
+        paths.append(path)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps({"games": 1, "samples": 1, "path": str(paths[-1])}),
+        encoding="utf-8",
+    )
+    source = resolve_data_source(
+        TrainingConfig(data_manifest=str(manifest), replay_shards=3, run_name="mix")
+    )
+    assert source.train_paths == paths[-3:]
 
 
 def test_training_smoke_exports_checkpoint_and_torchscript(tmp_path: Path):

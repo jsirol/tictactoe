@@ -10,6 +10,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-manifest", type=str, default="data/selfplay/manifest.json")
     parser.add_argument("--train-file", type=str, default=None)
+    parser.add_argument("--replay-shards", type=int, default=3)
     parser.add_argument("--out-dir", type=str, default="data/models")
     parser.add_argument("--run-name", type=str, default=None)
     parser.add_argument("--epochs", type=int, default=5)
@@ -27,6 +28,7 @@ def main() -> int:
         TrainingConfig(
             data_manifest=args.data_manifest,
             train_file=args.train_file,
+            replay_shards=args.replay_shards,
             out_dir=args.out_dir,
             run_name=run_name,
             epochs=args.epochs,

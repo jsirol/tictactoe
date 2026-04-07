@@ -36,6 +36,7 @@ class LoopConfig:
 
     train_epochs: int = 5
     train_batch_size: int = 128
+    replay_shards: int = 3
     lr: float = 1e-3
     weight_decay: float = 1e-4
     train_log_every_steps: int = 20
@@ -123,6 +124,7 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
             training_meta = run_training(
                 TrainingConfig(
                     data_manifest=str(Path(config.selfplay_output_dir) / "manifest.json"),
+                    replay_shards=config.replay_shards,
                     out_dir=str(train_out_dir),
                     run_name=train_run_name,
                     epochs=config.train_epochs,

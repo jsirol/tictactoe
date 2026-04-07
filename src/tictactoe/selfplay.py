@@ -7,6 +7,7 @@ import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from tictactoe.bots import MCTSBot
 from tictactoe.core import GameState, Move, Symbol
@@ -85,6 +86,13 @@ class QueuePolicyValueClient:
 
 
 def run_selfplay(config: SelfPlayConfig) -> dict[str, int | float]:
+    return run_selfplay_with_progress(config=config, on_progress=None)
+
+
+def run_selfplay_with_progress(
+    config: SelfPlayConfig,
+    on_progress: Callable[[dict], None] | None = None,
+) -> dict[str, int | float]:
     out_dir = Path(config.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     start = time.perf_counter()
@@ -93,6 +101,7 @@ def run_selfplay(config: SelfPlayConfig) -> dict[str, int | float]:
     worker_response_queues = [mp.Queue(maxsize=32) for _ in range(config.workers)]
     writer_queue: mp.Queue[dict] = mp.Queue(maxsize=config.workers * 2)
     done_queue: mp.Queue[dict] = mp.Queue()
+    progress_queue: mp.Queue[dict] = mp.Queue(maxsize=max(64, config.games * 2))
 
     batcher = mp.Process(
         target=_batcher_main,
@@ -124,14 +133,33 @@ def run_selfplay(config: SelfPlayConfig) -> dict[str, int | float]:
                 request_queue,
                 worker_response_queues[worker_id],
                 writer_queue,
+                progress_queue,
             ),
             daemon=True,
         )
         workers.append(proc)
         proc.start()
 
+    alive = True
+    while alive:
+        alive = any(proc.is_alive() for proc in workers)
+        try:
+            event = progress_queue.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if on_progress is not None:
+            on_progress(event)
+
     for proc in workers:
         proc.join()
+
+    while True:
+        try:
+            event = progress_queue.get_nowait()
+        except queue.Empty:
+            break
+        if on_progress is not None:
+            on_progress(event)
 
     writer_queue.put({"kind": "shutdown"})
     batcher.terminate()
@@ -152,6 +180,7 @@ def _worker_main(
     request_queue: mp.Queue[InferenceRequest],
     response_queue: mp.Queue[InferenceResponse],
     writer_queue: mp.Queue[dict],
+    progress_queue: mp.Queue[dict],
 ) -> None:
     rng = random.Random(worker_seed)
     if config.determinism == "fast":
@@ -211,6 +240,14 @@ def _worker_main(
             writer_queue.put(sample)
         writer_queue.put(
             {"kind": "game", "game_id": game_id, "winner": None if state.winner is None else state.winner.value}
+        )
+        progress_queue.put(
+            {
+                "kind": "game_progress",
+                "worker_id": worker_id,
+                "game_id": game_id,
+                "samples": len(samples),
+            }
         )
 
 

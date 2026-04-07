@@ -330,7 +330,14 @@ def masked_policy_kl_loss(F, logits, target, mask):
     masked_logits = logits.masked_fill(mask <= 0, -1e9)
     log_probs = F.log_softmax(masked_logits.view(masked_logits.shape[0], -1), dim=-1)
     target_flat = target.view(target.shape[0], -1)
-    target_norm = target_flat / target_flat.sum(dim=-1, keepdim=True).clamp_min(1e-8)
+    mask_flat = mask.view(mask.shape[0], -1)
+    # Defensive: keep policy targets only on legal actions.
+    legal_target = target_flat * mask_flat
+    legal_sum = legal_target.sum(dim=-1, keepdim=True)
+    uniform_legal = mask_flat / mask_flat.sum(dim=-1, keepdim=True).clamp_min(1.0)
+    target_norm = legal_target / legal_sum.clamp_min(1e-8)
+    has_target = (legal_sum > 0).to(dtype=target_norm.dtype)
+    target_norm = target_norm * has_target + uniform_legal * (1.0 - has_target)
     return -(target_norm * log_probs).sum(dim=-1).mean()
 
 

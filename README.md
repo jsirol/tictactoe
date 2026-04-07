@@ -3,6 +3,7 @@
 Configurable Tic Tac Toe / five-in-a-row game in Python with a bot interface.
 
 For full self-play + training usage, see [`SELFPLAY_README.md`](SELFPLAY_README.md).
+For alternating headless self-play/train loop helper, use `scripts/run_selfplay_train_loop.py`.
 
 ## Implemented Features
 

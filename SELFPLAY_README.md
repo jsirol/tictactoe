@@ -145,3 +145,30 @@ uv run tictactoe selfplay \
 3. Use new TorchScript model in the next self-play run.
 
 This repo currently keeps that loop manual by design (no full pipeline orchestrator yet).
+
+## 9) Alternating Loop Helper (Headless)
+
+You can run an alternating helper that performs:
+1. self-play with current model,
+2. one training update from latest manifest,
+3. repeat.
+
+Example:
+
+```bash
+uv run python scripts/run_selfplay_train_loop.py \
+  --iterations 10 \
+  --games-per-run 10 \
+  --checkpoint-every 5 \
+  --size 10 \
+  --workers 12
+```
+
+Outputs under `data/models/loops/<run_name>/`:
+- `latest.torchscript.pt`
+- `best.torchscript.pt` (lowest training total loss)
+- `final.torchscript.pt`
+- `checkpoints/iter_XXX.*` every `--checkpoint-every`
+- `loop_history.jsonl` with per-iteration metrics
+
+During self-play in each iteration, progress is printed per completed game with running games/min.

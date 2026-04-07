@@ -25,6 +25,7 @@ def main() -> int:
     parser.add_argument("--batch-wait-ms", type=int, default=3)
     parser.add_argument("--simulations", type=int, default=200)
     parser.add_argument("--time-budget-ms", type=int, default=120)
+    parser.add_argument("--max-plies", type=int, default=None)
     parser.add_argument("--determinism", type=str, default="balanced", choices=["balanced", "strict", "fast"])
     parser.add_argument("--high-temperature", type=float, default=1.0)
     parser.add_argument("--low-temperature", type=float, default=0.1)
@@ -59,6 +60,7 @@ def main() -> int:
             batch_wait_ms=args.batch_wait_ms,
             simulations=args.simulations,
             time_budget_ms=args.time_budget_ms,
+            max_plies=args.max_plies,
             determinism=args.determinism,
             high_temperature=args.high_temperature,
             low_temperature=args.low_temperature,

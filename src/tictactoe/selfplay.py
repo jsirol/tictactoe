@@ -49,6 +49,7 @@ class SelfPlayConfig:
     high_temperature: float
     low_temperature: float
     temperature_cutoff_ply: int
+    max_plies: int | None = None
 
 
 class QueuePolicyValueClient:
@@ -126,9 +127,11 @@ def run_selfplay_with_progress(
     writer.start()
 
     base_seed = config.seed if config.seed is not None else int(time.time())
-    games_per_worker = [config.games // config.workers for _ in range(config.workers)]
-    for idx in range(config.games % config.workers):
-        games_per_worker[idx] += 1
+    game_queue: mp.Queue[int | None] = mp.Queue(maxsize=max(16, config.games))
+    for game_idx in range(config.games):
+        game_queue.put(game_idx)
+    for _ in range(config.workers):
+        game_queue.put(None)
 
     workers: list[mp.Process] = []
     for worker_id in range(config.workers):
@@ -138,7 +141,7 @@ def run_selfplay_with_progress(
                 worker_id,
                 config,
                 base_seed + worker_id * 100_000,
-                games_per_worker[worker_id],
+                game_queue,
                 request_queue,
                 worker_response_queues[worker_id],
                 writer_queue,
@@ -185,7 +188,7 @@ def _worker_main(
     worker_id: int,
     config: SelfPlayConfig,
     worker_seed: int,
-    games: int,
+    game_queue: mp.Queue[int | None],
     request_queue: mp.Queue[InferenceRequest],
     response_queue: mp.Queue[InferenceResponse],
     writer_queue: mp.Queue[dict],
@@ -210,12 +213,16 @@ def _worker_main(
         dirichlet_alpha=0.3,
     )
 
-    for game_idx in range(games):
+    max_plies = config.max_plies if config.max_plies is not None else config.size * config.size
+    while True:
+        game_idx = game_queue.get()
+        if game_idx is None:
+            break
         state = GameState.new(size=config.size)
         samples: list[dict] = []
         ply = 0
         game_id = f"{worker_id}:{game_idx}:{worker_seed}"
-        while not state.is_over:
+        while not state.is_over and ply < max_plies:
             symbol = state.next_symbol
             bot = bot_x if symbol is Symbol.X else bot_o
             bot.temperature = (
@@ -244,6 +251,7 @@ def _worker_main(
             state.apply_move(move)
             ply += 1
         outcome = 0.0 if state.winner is None else (1.0 if state.winner is Symbol.X else -1.0)
+        capped = (not state.is_over) and ply >= max_plies
         for sample in samples:
             sample["value_target"] = outcome if sample["player_to_move"] == "X" else -outcome
             writer_queue.put(sample)
@@ -256,6 +264,8 @@ def _worker_main(
                 "worker_id": worker_id,
                 "game_id": game_id,
                 "samples": len(samples),
+                "plies": ply,
+                "capped": capped,
             }
         )
 

@@ -186,3 +186,5 @@ Outputs under `data/models/loops/<run_name>/`:
 
 During self-play in each iteration, progress is printed per completed game with running games/min.
 Progress lines include `worker=<id>` so parallel execution is visible.
+Self-play scheduling is dynamic: workers pull next game from a shared queue, so slower long games do not stall fast workers.
+You can also cap game length with `--max-plies` (adjudicates remaining game as draw target when capped).

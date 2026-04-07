@@ -29,6 +29,7 @@ class LoopConfig:
     batch_wait_ms: int = 3
     simulations: int = 200
     time_budget_ms: int = 120
+    max_plies: int | None = None
     determinism: str = "balanced"
     high_temperature: float = 1.0
     low_temperature: float = 0.1
@@ -106,6 +107,7 @@ def run_loop(config: LoopConfig, logger: Callable[[str], None] = print) -> dict:
                     batch_wait_ms=config.batch_wait_ms,
                     simulations=config.simulations,
                     time_budget_ms=config.time_budget_ms,
+                    max_plies=config.max_plies,
                     determinism=config.determinism,
                     high_temperature=config.high_temperature,
                     low_temperature=config.low_temperature,

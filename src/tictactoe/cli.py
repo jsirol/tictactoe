@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+import argparse
+import random
+from typing import Sequence
+
+from .bots import Bot, RandomBot
+from .core import MIN_BOARD_SIZE, GameState, InvalidMove, Move, Symbol
+
+
+def parse_move(raw: str) -> Move:
+    parts = raw.strip().split()
+    if len(parts) != 2:
+        raise ValueError("Expected two integers: row col")
+    try:
+        row, col = (int(parts[0]), int(parts[1]))
+    except ValueError as exc:
+        raise ValueError("Row and col must be integers") from exc
+    return Move(row=row, col=col)
+
+
+def render_board(state: GameState) -> str:
+    header = "   " + " ".join(f"{c:2d}" for c in range(state.board.size))
+    rows: list[str] = [header]
+    for row_idx, row in enumerate(state.board.cells):
+        cells = " ".join(f"{(cell.value if cell else '.'):>2}" for cell in row)
+        rows.append(f"{row_idx:2d} {cells}")
+    return "\n".join(rows)
+
+
+def get_bot(name: str) -> Bot:
+    if name == "random":
+        return RandomBot()
+    raise ValueError(f"Unsupported bot: {name}")
+
+
+def play_bot_vs_bot(size: int, bot_x: Bot, bot_o: Bot, rng: random.Random) -> GameState:
+    state = GameState.new(size=size)
+    while not state.is_over:
+        symbol = state.next_symbol
+        bot = bot_x if symbol is Symbol.X else bot_o
+        move = bot.choose_move(state=state, symbol=symbol, rng=rng)
+        state.apply_move(move)
+    return state
+
+
+def run_simulation(size: int, games: int, seed: int | None = None) -> dict[str, int]:
+    if size < MIN_BOARD_SIZE:
+        raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
+    if games < 1:
+        raise ValueError("--games must be >= 1")
+
+    rng = random.Random(seed)
+    bot_x = RandomBot()
+    bot_o = RandomBot()
+    result = {"X": 0, "O": 0, "draw": 0}
+    for _ in range(games):
+        state = play_bot_vs_bot(size=size, bot_x=bot_x, bot_o=bot_o, rng=rng)
+        if state.winner is Symbol.X:
+            result["X"] += 1
+        elif state.winner is Symbol.O:
+            result["O"] += 1
+        else:
+            result["draw"] += 1
+    return result
+
+
+def run_play(size: int, seed: int | None = None, bot_name: str = "random") -> int:
+    if size < MIN_BOARD_SIZE:
+        raise ValueError(f"--size must be >= {MIN_BOARD_SIZE}")
+
+    rng = random.Random(seed)
+    bot = get_bot(bot_name)
+    state = GameState.new(size=size)
+
+    while not state.is_over:
+        print(render_board(state))
+        if state.next_symbol is Symbol.X:
+            raw = input("Your move (row col, 0-based): ")
+            try:
+                move = parse_move(raw)
+                state.apply_move(move)
+            except (ValueError, InvalidMove) as exc:
+                print(f"Invalid move: {exc}")
+                continue
+        else:
+            move = bot.choose_move(state=state, symbol=Symbol.O, rng=rng)
+            state.apply_move(move)
+            print(f"Bot plays: {move.row} {move.col}")
+
+    print(render_board(state))
+    if state.winner:
+        print(f"Winner: {state.winner.value}")
+    else:
+        print("Draw")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="tictactoe")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    play = subparsers.add_parser("play", help="Play human vs random bot in terminal UI")
+    play.add_argument("--size", type=int, default=15)
+    play.add_argument("--seed", type=int, default=None)
+    play.add_argument("--bot", type=str, default="random")
+
+    simulate = subparsers.add_parser("simulate", help="Run headless bot vs bot simulations")
+    simulate.add_argument("--size", type=int, default=15)
+    simulate.add_argument("--games", type=int, default=1)
+    simulate.add_argument("--seed", type=int, default=None)
+
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        if args.command == "play":
+            return run_play(size=args.size, seed=args.seed, bot_name=args.bot)
+        if args.command == "simulate":
+            result = run_simulation(size=args.size, games=args.games, seed=args.seed)
+            print(f"X wins: {result['X']}, O wins: {result['O']}, draws: {result['draw']}")
+            return 0
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 2
+
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

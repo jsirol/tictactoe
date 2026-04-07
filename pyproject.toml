@@ -1,0 +1,27 @@
+[project]
+name = "tictactoe"
+version = "0.1.0"
+description = "Configurable tic tac toe (five-in-a-row) with bot interface"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+tictactoe = "tictactoe.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["tictactoe"]
